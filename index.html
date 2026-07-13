@@ -2,70 +2,69 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamHub Official</title>
+    <title>StreamHub - 日本語検索対応</title>
     <style>
-        body { margin: 0; background: #0f0f0f; color: white; font-family: sans-serif; }
+        body { background: #0f0f0f; color: white; font-family: sans-serif; margin: 0; }
         header { padding: 15px; border-bottom: 1px solid #333; display: flex; gap: 10px; }
         input { flex: 1; padding: 10px; border-radius: 20px; background: #121212; border: 1px solid #333; color: white; }
-        button { padding: 10px 20px; border-radius: 20px; border: none; background: #fff; cursor: pointer; font-weight: bold; }
+        button { padding: 10px 20px; border-radius: 20px; background: #fff; cursor: pointer; border: none; font-weight: bold; }
         #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding: 20px; }
         .card { cursor: pointer; }
         .thumb { width: 100%; aspect-ratio: 16/9; border-radius: 12px; object-fit: cover; }
         .title { font-size: 0.95rem; margin-top: 8px; }
-        .author { font-size: 0.85rem; color: #aaa; }
     </style>
 </head>
 <body>
 
 <header>
-    <input type="text" id="q" placeholder="検索...">
-    <button onclick="search()">検索</button>
+    <input type="text" id="q" placeholder="日本語で検索...">
+    <button onclick="handleSearch()">検索</button>
 </header>
 <div id="results"></div>
 
 <script>
-    async function search() {
-        const q = document.getElementById('q').value;
+    // 安定して動作するインスタンスリスト
+    const instances = ["https://yewtu.be", "https://invidious.privacydev.net", "https://inv.nadeko.net"];
+
+    async function handleSearch() {
+        const query = document.getElementById('q').value;
         const results = document.getElementById('results');
-        if (!q) return;
+        if (!query) return;
 
-        results.innerHTML = "取得中...";
+        results.innerHTML = "検索中...";
 
-        // 公式APIエンドポイント
-        const baseUrl = "https://api.invidious.io/api/v1/search";
-        const proxy = "https://corsproxy.io/?";
-        const targetUrl = `${baseUrl}?q=${encodeURIComponent(q)}&type=video`;
+        // インスタンスを一つずつ試す
+        for (const instance of instances) {
+            try {
+                // 日本語を適切にエンコードしてリクエスト
+                const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) continue;
 
-        try {
-            const response = await fetch(proxy + encodeURIComponent(targetUrl));
-            if (!response.ok) throw new Error(`HTTPエラー: ${response.status}`);
-            
-            const data = await response.json();
-            results.innerHTML = "";
-
-            if (data.length === 0) {
-                results.innerHTML = "検索結果が見つかりません。";
-                return;
+                const data = await res.json();
+                renderResults(data, instance);
+                return; // 成功したら終了
+            } catch (e) {
+                console.warn(`${instance} でエラー:`, e);
             }
-
-            data.forEach(v => {
-                const card = document.createElement('div');
-                card.className = 'card';
-                // サムネイルのベースURLを補完
-                const thumbUrl = v.videoThumbnails.find(t => t.quality === 'medium')?.url || v.videoThumbnails[0].url;
-                
-                card.innerHTML = `
-                    <img src="https://invidious.privacydev.net${thumbUrl}" class="thumb">
-                    <div class="title">${v.title}</div>
-                    <div class="author">${v.author}</div>
-                `;
-                card.onclick = () => window.open(`https://www.youtube.com/watch?v=${v.videoId}`, '_blank');
-                results.appendChild(card);
-            });
-        } catch (err) {
-            results.innerHTML = `エラー発生: ${err.message}<br>APIまたはプロキシサーバーが一時的に応答していません。`;
         }
+        results.innerHTML = "すべてのサーバーが応答しませんでした。";
+    }
+
+    function renderResults(data, instance) {
+        const results = document.getElementById('results');
+        results.innerHTML = "";
+        data.forEach(v => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            // サムネイルURLを修正
+            const thumbUrl = v.videoThumbnails[0].url.startsWith('http') ? v.videoThumbnails[0].url : instance + v.videoThumbnails[0].url;
+            card.innerHTML = `
+                <img src="${thumbUrl}" class="thumb">
+                <div class="title">${v.title}</div>
+            `;
+            card.onclick = () => window.open(`https://www.youtube.com/watch?v=${v.videoId}`, '_blank');
+            results.appendChild(card);
+        });
     }
 </script>
 </body>
