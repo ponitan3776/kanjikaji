@@ -1,486 +1,69 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-  <title>Invidious 検索（自動フォールバック）</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f5f5; color: #222; line-height: 1.5;
-      padding: 16px; display: flex; flex-direction: column; align-items: center;
+import os
+import random
+import requests
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# パブリックインスタンスのリスト（環境変数で上書き可能）
+DEFAULT_INSTANCES = [
+    "https://inv.us.projectsegfau.lt",
+    "https://y.com.sb",
+    "https://invidious.snopyta.org",
+    "https://iv.ggtyler.dev"
+]
+
+def get_instance():
+    """環境変数かランダムでインスタンスURLを返す"""
+    env_url = os.environ.get("INVIDIOUS_INSTANCE")
+    if env_url:
+        return env_url.rstrip("/")
+    return random.choice(DEFAULT_INSTANCES)
+
+@app.route("/")
+def home():
+    return "Invidious API Proxy is running! Use /search?q=キーワード"
+
+@app.route("/search")
+def search():
+    """検索エンドポイント： ?q=音楽&limit=5 のように指定"""
+    query = request.args.get("q")
+    if not query:
+        return jsonify({"error": "q パラメータが必要です"}), 400
+
+    limit = int(request.args.get("limit", 5))
+    instance = get_instance()
+    url = f"{instance}/api/v1/search"
+
+    params = {
+        "q": query,
+        "type": "video",
+        "limit": min(limit, 20)  # 上限20
     }
-    #app {
-      width: 100%; max-width: 800px; background: white;
-      border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.08);
-      overflow: hidden; display: flex; flex-direction: column; min-height: 90vh;
-    }
-    header {
-      padding: 16px; background: #ffffff; border-bottom: 1px solid #eee;
-      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-      position: sticky; top: 0; z-index: 10;
-    }
-    #backBtn {
-      background: none; border: none; font-size: 1.5rem; cursor: pointer;
-      padding: 8px; border-radius: 50%; width: 40px; height: 40px;
-      display: flex; align-items: center; justify-content: center; color: #333;
-    }
-    #backBtn.hidden { display: none; }
-    #searchForm { flex: 1; display: flex; gap: 8px; align-items: center; }
-    #searchInput {
-      flex: 1; padding: 12px 16px; border: 1.5px solid #ddd;
-      border-radius: 12px; font-size: 1rem; min-width: 0;
-    }
-    #searchInput:focus {
-      outline: none; border-color: #4a90d9;
-      box-shadow: 0 0 0 3px rgba(74,144,217,0.15);
-    }
-    #searchBtn {
-      padding: 12px 20px; background: #4a90d9; color: white;
-      border: none; border-radius: 12px; font-weight: 600; font-size: 1rem;
-      cursor: pointer; white-space: nowrap;
-    }
-    .view-title {
-      padding: 12px 16px 4px; font-size: 1.2rem; font-weight: 600; color: #444;
-    }
-    #resultsContainer {
-      padding: 8px 16px 24px; display: flex; flex-direction: column; gap: 16px;
-      flex: 1; overflow-y: auto;
-    }
-    .result-card {
-      display: flex; gap: 12px; background: #fafafa; border-radius: 16px;
-      padding: 12px; border: 1px solid #eee; align-items: flex-start;
-    }
-    .result-card.channel-card { cursor: pointer; }
-    .result-card.channel-card:hover { background: #f0f5ff; }
-    .result-card:active { transform: scale(0.99); }
-    .thumbnail-wrapper {
-      flex-shrink: 0; width: 140px; height: 80px; border-radius: 10px;
-      overflow: hidden; background: #ddd;
-    }
-    .thumbnail-wrapper img {
-      width: 100%; height: 100%; object-fit: cover;
-    }
-    .thumbnail-wrapper.channel-thumb {
-      width: 60px; height: 60px; border-radius: 50%;
-    }
-    .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-    .video-title {
-      font-weight: 600; font-size: 0.95rem; line-height: 1.3;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-      overflow: hidden; word-break: break-word;
-    }
-    .video-title a { color: #222; text-decoration: none; }
-    .video-title a:hover { text-decoration: underline; }
-    .channel-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .channel-name {
-      font-size: 0.85rem; color: #4a90d9; cursor: pointer; font-weight: 500;
-    }
-    .channel-name:hover { border-bottom: 1px solid #4a90d9; }
-    .meta { font-size: 0.8rem; color: #777; display: flex; flex-wrap: wrap; gap: 8px; }
-    .badge {
-      background: #eee; border-radius: 20px; padding: 2px 10px; font-size: 0.75rem; color: #555;
-    }
-    .load-more { text-align: center; margin-top: 8px; }
-    .load-more button {
-      background: none; border: 1.5px solid #4a90d9; color: #4a90d9;
-      padding: 10px 24px; border-radius: 30px; font-weight: 600; cursor: pointer;
-    }
-    .loading, .empty { text-align: center; padding: 32px; color: #888; }
-    @media (max-width: 600px) {
-      body { padding: 8px; }
-      .thumbnail-wrapper { width: 100px; height: 60px; }
-      .thumbnail-wrapper.channel-thumb { width: 48px; height: 48px; }
-      .video-title { font-size: 0.85rem; }
-    }
-  </style>
-</head>
-<body>
-  <div id="app">
-    <header>
-      <button id="backBtn" class="hidden" aria-label="戻る">←</button>
-      <form id="searchForm" autocomplete="off">
-        <input type="text" id="searchInput" placeholder="YouTuber名や動画タイトルで検索" enterkeyhint="search">
-        <button type="submit" id="searchBtn">検索</button>
-      </form>
-    </header>
-    <div id="viewTitle" class="view-title"></div>
-    <div id="resultsContainer"></div>
-  </div>
 
-  <script>
-    (function() {
-      // --- 利用可能なインスタンス一覧（上から順に試行） ---
-      const INSTANCE_CANDIDATES = [
-        'https://inv.nadeko.net',
-        'https://yewtu.be',
-        'https://vid.puffyan.us',
-        'https://invidious.snopyta.org',
-        'https://invidious.kavin.rocks',
-        'https://redirect.invidious.io',   // リダイレクトされることを期待（成功すれば使われる）
-        'https://api.invidious.io',        // 通常は動かないが試行
-        'https://invidious.io'             // 通常は動かないが試行
-      ];
+    try:
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
 
-      const MAX_PAGES = 5;
-      let workingInstance = null;   // 成功したインスタンスを保持
-      let currentView = 'search';
-      let currentQuery = '';
-      let currentChannelId = '';
-      let currentChannelName = '';
-      let searchPage = 1;
-      let channelPage = 1;
-      let isLoading = false;
+        # 必要な情報だけ抽出して返す（任意）
+        results = []
+        for item in data:
+            results.append({
+                "title": item.get("title"),
+                "author": item.get("author"),
+                "videoId": item.get("videoId"),
+                "lengthSeconds": item.get("lengthSeconds"),
+                "published": item.get("publishedText"),
+                "viewCount": item.get("viewCount")
+            })
+        return jsonify(results)
 
-      // --- DOM ---
-      const backBtn = document.getElementById('backBtn');
-      const searchForm = document.getElementById('searchForm');
-      const searchInput = document.getElementById('searchInput');
-      const viewTitle = document.getElementById('viewTitle');
-      const resultsContainer = document.getElementById('resultsContainer');
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "インスタンスがタイムアウトしました"}), 504
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"リクエスト失敗: {str(e)}"}), 500
 
-      // --- ユーティリティ ---
-      function formatNumber(num) {
-        if (num === undefined || num === null) return '';
-        if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
-        if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
-        return num.toString();
-      }
-      function timeAgo(timestamp) {
-        if (!timestamp) return '';
-        const diff = Date.now() - new Date(timestamp).getTime();
-        const seconds = Math.floor(diff / 1000);
-        if (seconds < 60) return `${seconds}秒前`;
-        const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return `${minutes}分前`;
-        const hours = Math.floor(minutes / 60);
-        if (hours < 24) return `${hours}時間前`;
-        const days = Math.floor(hours / 24);
-        if (days < 30) return `${days}日前`;
-        const months = Math.floor(days / 30);
-        if (months < 12) return `${months}ヶ月前`;
-        return `${Math.floor(months / 12)}年前`;
-      }
-
-      // --- 複数インスタンスを試すフェッチ ---
-      async function tryFetchWithFallback(path) {
-        // まず前回成功したインスタンスがあれば試す
-        const candidates = [];
-        if (workingInstance) {
-          candidates.push(workingInstance);
-        }
-        // それ以外の候補を追加（重複除去）
-        for (const inst of INSTANCE_CANDIDATES) {
-          if (!candidates.includes(inst)) {
-            candidates.push(inst);
-          }
-        }
-
-        let lastError = null;
-        for (const baseUrl of candidates) {
-          try {
-            const url = `${baseUrl}${path}`;
-            const resp = await fetch(url);
-            if (!resp.ok) {
-              throw new Error(`Status ${resp.status}`);
-            }
-            const data = await resp.json();
-            // 成功したら workingInstance を更新
-            workingInstance = baseUrl;
-            return { data, instance: baseUrl };
-          } catch (err) {
-            lastError = err;
-            continue;
-          }
-        }
-        throw new Error(`すべてのインスタンスで失敗: ${lastError?.message}`);
-      }
-
-      // --- APIラッパー ---
-      async function searchInvidious(query, page = 1) {
-        const q = encodeURIComponent(query);
-        const path = `/api/v1/search?q=${q}&page=${page}&type=video,channel`;
-        return tryFetchWithFallback(path);
-      }
-      async function getChannelVideos(channelId, page = 1) {
-        const path = `/api/v1/channels/${channelId}/videos?page=${page}`;
-        return tryFetchWithFallback(path);
-      }
-
-      // --- レンダリング ---
-      function clearResults() {
-        resultsContainer.innerHTML = '';
-      }
-      function showLoading() {
-        clearResults();
-        resultsContainer.innerHTML = '<div class="loading">読み込み中...</div>';
-      }
-      function showEmpty(msg = '結果が見つかりませんでした') {
-        clearResults();
-        resultsContainer.innerHTML = `<div class="empty">${msg}</div>`;
-      }
-
-      function createVideoCard(item, instance) {
-        const card = document.createElement('div');
-        card.className = 'result-card';
-
-        // サムネイル
-        const thumbWrapper = document.createElement('div');
-        thumbWrapper.className = 'thumbnail-wrapper';
-        const thumbImg = document.createElement('img');
-        const thumbnail = item.videoThumbnails?.[0]?.url || '';
-        thumbImg.src = thumbnail;
-        thumbImg.alt = item.title;
-        thumbImg.loading = 'lazy';
-        const thumbLink = document.createElement('a');
-        thumbLink.href = `${instance}/watch?v=${item.videoId}`;
-        thumbLink.target = '_blank';
-        thumbLink.rel = 'noopener noreferrer';
-        thumbLink.appendChild(thumbImg);
-        thumbWrapper.appendChild(thumbLink);
-
-        const info = document.createElement('div');
-        info.className = 'info';
-
-        const titleDiv = document.createElement('div');
-        titleDiv.className = 'video-title';
-        const titleLink = document.createElement('a');
-        titleLink.href = `${instance}/watch?v=${item.videoId}`;
-        titleLink.target = '_blank';
-        titleLink.rel = 'noopener noreferrer';
-        titleLink.textContent = item.title;
-        titleDiv.appendChild(titleLink);
-        info.appendChild(titleDiv);
-
-        const channelRow = document.createElement('div');
-        channelRow.className = 'channel-row';
-        const channelSpan = document.createElement('span');
-        channelSpan.className = 'channel-name';
-        channelSpan.textContent = item.author;
-        channelSpan.addEventListener('click', (e) => {
-          e.stopPropagation();
-          showChannelView(item.authorId, item.author);
-        });
-        channelRow.appendChild(channelSpan);
-        info.appendChild(channelRow);
-
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        if (item.viewCount !== undefined) {
-          meta.innerHTML += `<span>👀 ${formatNumber(item.viewCount)} 回視聴</span>`;
-        }
-        if (item.published) {
-          meta.innerHTML += `<span>🕒 ${timeAgo(item.published)}</span>`;
-        }
-        if (item.lengthSeconds) {
-          const mins = Math.floor(item.lengthSeconds / 60);
-          const secs = item.lengthSeconds % 60;
-          meta.innerHTML += `<span class="badge">${mins}:${secs.toString().padStart(2,'0')}</span>`;
-        }
-        info.appendChild(meta);
-
-        card.appendChild(thumbWrapper);
-        card.appendChild(info);
-        return card;
-      }
-
-      function createChannelCard(item) {
-        const card = document.createElement('div');
-        card.className = 'result-card channel-card';
-        card.addEventListener('click', () => showChannelView(item.authorId, item.author));
-
-        const thumbWrapper = document.createElement('div');
-        thumbWrapper.className = 'thumbnail-wrapper channel-thumb';
-        const iconUrl = item.authorThumbnails?.[0]?.url || '';
-        const iconImg = document.createElement('img');
-        iconImg.src = iconUrl;
-        iconImg.alt = item.author;
-        iconImg.loading = 'lazy';
-        thumbWrapper.appendChild(iconImg);
-
-        const info = document.createElement('div');
-        info.className = 'info';
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'video-title';
-        nameDiv.textContent = item.author;
-        info.appendChild(nameDiv);
-
-        const meta = document.createElement('div');
-        meta.className = 'meta';
-        if (item.subCount !== undefined) {
-          meta.innerHTML += `<span>📢 登録者 ${formatNumber(item.subCount)}</span>`;
-        }
-        if (item.videoCount !== undefined) {
-          meta.innerHTML += `<span>🎬 動画 ${item.videoCount}</span>`;
-        }
-        if (item.description) {
-          const desc = document.createElement('div');
-          desc.style.cssText = 'font-size:0.8rem;color:#666;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
-          desc.textContent = item.description.replace(/\n/g, ' ');
-          info.appendChild(desc);
-        }
-        info.appendChild(meta);
-        card.appendChild(thumbWrapper);
-        card.appendChild(info);
-        return card;
-      }
-
-      function renderSearchResults(items, instance, append = false) {
-        if (!append) clearResults();
-        if (!items || items.length === 0) {
-          if (!append) showEmpty('該当する結果がありません');
-          return;
-        }
-        items.forEach(item => {
-          if (item.type === 'channel') {
-            resultsContainer.appendChild(createChannelCard(item));
-          } else {
-            resultsContainer.appendChild(createVideoCard(item, instance));
-          }
-        });
-        if (items.length > 0 && searchPage < MAX_PAGES) {
-          const loadMoreDiv = document.createElement('div');
-          loadMoreDiv.className = 'load-more';
-          const loadMoreBtn = document.createElement('button');
-          loadMoreBtn.textContent = 'もっと見る';
-          loadMoreBtn.addEventListener('click', async () => {
-            searchPage++;
-            await loadMoreSearchResults();
-          });
-          loadMoreDiv.appendChild(loadMoreBtn);
-          resultsContainer.appendChild(loadMoreDiv);
-        } else if (searchPage >= MAX_PAGES && items.length > 0) {
-          const endMsg = document.createElement('div');
-          endMsg.className = 'loading';
-          endMsg.textContent = '表示できる上限に達しました';
-          resultsContainer.appendChild(endMsg);
-        }
-      }
-
-      async function performSearch(query, page = 1) {
-        if (isLoading) return;
-        isLoading = true;
-        if (page === 1) showLoading();
-        try {
-          const { data, instance } = await searchInvidious(query, page);
-          renderSearchResults(data, instance, page > 1);
-        } catch (error) {
-          console.error(error);
-          showEmpty('検索中にエラーが発生しました。時間をおいてお試しください。');
-        } finally {
-          isLoading = false;
-        }
-      }
-
-      async function loadMoreSearchResults() {
-        if (!currentQuery) return;
-        try {
-          const { data, instance } = await searchInvidious(currentQuery, searchPage);
-          if (data.length === 0) {
-            const endMsg = document.createElement('div');
-            endMsg.className = 'loading';
-            endMsg.textContent = 'すべての結果を表示しました';
-            resultsContainer.appendChild(endMsg);
-            return;
-          }
-          const oldLoadMore = resultsContainer.querySelector('.load-more');
-          if (oldLoadMore) oldLoadMore.remove();
-          renderSearchResults(data, instance, true);
-        } catch (error) {
-          console.error(error);
-        }
-      }
-
-      async function showChannelView(channelId, channelName) {
-        currentView = 'channel';
-        currentChannelId = channelId;
-        currentChannelName = channelName;
-        channelPage = 1;
-        backBtn.classList.remove('hidden');
-        viewTitle.textContent = `📺 ${channelName} の動画`;
-        searchInput.value = '';
-        showLoading();
-        try {
-          const { data, instance } = await getChannelVideos(channelId, channelPage);
-          renderChannelVideos(data, instance);
-        } catch (error) {
-          console.error(error);
-          showEmpty('チャンネル情報を取得できませんでした');
-        }
-      }
-
-      function renderChannelVideos(videos, instance, append = false) {
-        if (!append) clearResults();
-        if (!videos || videos.length === 0) {
-          if (!append) showEmpty('このチャンネルには動画がありません');
-          return;
-        }
-        videos.forEach(video => {
-          resultsContainer.appendChild(createVideoCard(video, instance));
-        });
-        if (videos.length > 0 && channelPage < MAX_PAGES) {
-          const loadMoreDiv = document.createElement('div');
-          loadMoreDiv.className = 'load-more';
-          const loadMoreBtn = document.createElement('button');
-          loadMoreBtn.textContent = 'さらに読み込む';
-          loadMoreBtn.addEventListener('click', async () => {
-            channelPage++;
-            try {
-              const res = await getChannelVideos(currentChannelId, channelPage);
-              if (res.data.length === 0) {
-                const endMsg = document.createElement('div');
-                endMsg.className = 'loading';
-                endMsg.textContent = 'すべての動画を表示しました';
-                resultsContainer.appendChild(endMsg);
-                loadMoreBtn.parentElement.remove();
-                return;
-              }
-              const oldLoadMore = resultsContainer.querySelector('.load-more');
-              if (oldLoadMore) oldLoadMore.remove();
-              renderChannelVideos(res.data, res.instance, true);
-            } catch (error) {
-              console.error(error);
-            }
-          });
-          loadMoreDiv.appendChild(loadMoreBtn);
-          resultsContainer.appendChild(loadMoreDiv);
-        }
-      }
-
-      function backToSearch() {
-        currentView = 'search';
-        currentChannelId = '';
-        currentChannelName = '';
-        channelPage = 1;
-        backBtn.classList.add('hidden');
-        viewTitle.textContent = '';
-        if (currentQuery) {
-          searchInput.value = currentQuery;
-          searchPage = 1;
-          performSearch(currentQuery, 1);
-        } else {
-          clearResults();
-          searchInput.value = '';
-        }
-      }
-
-      // --- イベント ---
-      searchForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const query = searchInput.value.trim();
-        if (!query) return;
-        currentView = 'search';
-        currentQuery = query;
-        searchPage = 1;
-        backBtn.classList.add('hidden');
-        viewTitle.textContent = '';
-        await performSearch(query, 1);
-      });
-      backBtn.addEventListener('click', backToSearch);
-
-      clearResults();
-    })();
-  </script>
-</body>
-</html>
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
