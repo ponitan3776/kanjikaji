@@ -1,71 +1,671 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <title>StreamHub - 日本語検索対応</title>
-    <style>
-        body { background: #0f0f0f; color: white; font-family: sans-serif; margin: 0; }
-        header { padding: 15px; border-bottom: 1px solid #333; display: flex; gap: 10px; }
-        input { flex: 1; padding: 10px; border-radius: 20px; background: #121212; border: 1px solid #333; color: white; }
-        button { padding: 10px 20px; border-radius: 20px; background: #fff; cursor: pointer; border: none; font-weight: bold; }
-        #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding: 20px; }
-        .card { cursor: pointer; }
-        .thumb { width: 100%; aspect-ratio: 16/9; border-radius: 12px; object-fit: cover; }
-        .title { font-size: 0.95rem; margin-top: 8px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+  <title>Invidious 検索</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      line-height: 1.5;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 800px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 90vh;
+    }
+
+    header {
+      padding: 16px;
+      background: #ffffff;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    #backBtn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #333;
+      transition: background 0.2s;
+    }
+    #backBtn:hover {
+      background: #f0f0f0;
+    }
+    #backBtn.hidden {
+      display: none;
+    }
+
+    #searchForm {
+      flex: 1;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #searchInput {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1.5px solid #ddd;
+      border-radius: 12px;
+      font-size: 1rem;
+      transition: border 0.2s;
+      min-width: 0;
+    }
+    #searchInput:focus {
+      outline: none;
+      border-color: #4a90d9;
+      box-shadow: 0 0 0 3px rgba(74,144,217,0.15);
+    }
+
+    #searchBtn {
+      padding: 12px 20px;
+      background: #4a90d9;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    #searchBtn:hover {
+      background: #357abd;
+    }
+
+    .view-title {
+      padding: 12px 16px 4px;
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #444;
+    }
+
+    #resultsContainer {
+      padding: 8px 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .result-card {
+      display: flex;
+      gap: 12px;
+      background: #fafafa;
+      border-radius: 16px;
+      padding: 12px;
+      transition: background 0.2s, transform 0.1s;
+      cursor: default;
+      border: 1px solid #eee;
+      align-items: flex-start;
+    }
+    .result-card.channel-card {
+      cursor: pointer;
+    }
+    .result-card.channel-card:hover {
+      background: #f0f5ff;
+    }
+    .result-card:active {
+      transform: scale(0.99);
+    }
+
+    .thumbnail-wrapper {
+      flex-shrink: 0;
+      width: 140px;
+      height: 80px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #ddd;
+      position: relative;
+    }
+    .thumbnail-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .thumbnail-wrapper.channel-thumb {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+    }
+
+    .info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .video-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
+    }
+    .video-title a {
+      color: #222;
+      text-decoration: none;
+    }
+    .video-title a:hover {
+      text-decoration: underline;
+    }
+
+    .channel-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .channel-name {
+      font-size: 0.85rem;
+      color: #4a90d9;
+      cursor: pointer;
+      font-weight: 500;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+    .channel-name:hover {
+      border-bottom-color: #4a90d9;
+    }
+    .meta {
+      font-size: 0.8rem;
+      color: #777;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .badge {
+      background: #eee;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    .load-more {
+      text-align: center;
+      margin-top: 8px;
+    }
+    .load-more button {
+      background: none;
+      border: 1.5px solid #4a90d9;
+      color: #4a90d9;
+      padding: 10px 24px;
+      border-radius: 30px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .load-more button:hover {
+      background: #4a90d9;
+      color: white;
+    }
+    .loading, .empty {
+      text-align: center;
+      padding: 32px;
+      color: #888;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 8px;
+      }
+      .thumbnail-wrapper {
+        width: 100px;
+        height: 60px;
+      }
+      .thumbnail-wrapper.channel-thumb {
+        width: 48px;
+        height: 48px;
+      }
+      .video-title {
+        font-size: 0.85rem;
+      }
+    }
+  </style>
 </head>
 <body>
+  <div id="app">
+    <header>
+      <button id="backBtn" class="hidden" aria-label="戻る">←</button>
+      <form id="searchForm" autocomplete="off">
+        <input type="text" id="searchInput" placeholder="YouTuber名や動画タイトルで検索" enterkeyhint="search">
+        <button type="submit" id="searchBtn">検索</button>
+      </form>
+    </header>
+    <div id="viewTitle" class="view-title"></div>
+    <div id="resultsContainer"></div>
+  </div>
 
-<header>
-    <input type="text" id="q" placeholder="日本語で検索...">
-    <button onclick="handleSearch()">検索</button>
-</header>
-<div id="results"></div>
+  <script>
+    (function() {
+      // --- 設定 ---
+      const INVIDIOUS_INSTANCE = 'https://inv.nadeko.net'; // 公開インスタンス（変更可）
+      const MAX_PAGES = 5; // 安全のため最大ページ数
 
-<script>
-    // 安定して動作するインスタンスリスト
-    const instances = ["https://yewtu.be", "https://invidious.privacydev.net", "https://inv.nadeko.net"];
+      // --- DOM要素 ---
+      const app = document.getElementById('app');
+      const backBtn = document.getElementById('backBtn');
+      const searchForm = document.getElementById('searchForm');
+      const searchInput = document.getElementById('searchInput');
+      const searchBtn = document.getElementById('searchBtn');
+      const viewTitle = document.getElementById('viewTitle');
+      const resultsContainer = document.getElementById('resultsContainer');
 
-    async function handleSearch() {
-        const query = document.getElementById('q').value;
-        const results = document.getElementById('results');
-        if (!query) return;
+      // --- 状態 ---
+      let currentView = 'search'; // 'search' | 'channel'
+      let currentQuery = '';
+      let currentChannelId = '';
+      let currentChannelName = '';
+      let searchPage = 1;
+      let channelPage = 1;
+      let isLoading = false;
 
-        results.innerHTML = "検索中...";
+      // --- ユーティリティ ---
+      function formatNumber(num) {
+        if (num === undefined || num === null) return '';
+        if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+        if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+        return num.toString();
+      }
 
-        // インスタンスを一つずつ試す
-        for (const instance of instances) {
-            try {
-                // 日本語を適切にエンコードしてリクエスト
-                const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
-                if (!res.ok) continue;
+      function timeAgo(timestamp) {
+        if (!timestamp) return '';
+        const now = Date.now();
+        const diff = now - new Date(timestamp).getTime();
+        const seconds = Math.floor(diff / 1000);
+        if (seconds < 60) return `${seconds}秒前`;
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}分前`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}時間前`;
+        const days = Math.floor(hours / 24);
+        if (days < 30) return `${days}日前`;
+        const months = Math.floor(days / 30);
+        if (months < 12) return `${months}ヶ月前`;
+        return `${Math.floor(months / 12)}年前`;
+      }
 
-                const data = await res.json();
-                renderResults(data, instance);
-                return; // 成功したら終了
-            } catch (e) {
-                console.warn(`${instance} でエラー:`, e);
-            }
+      // --- API 呼び出し ---
+      async function fetchFromInvidious(path) {
+        const url = `${INVIDIOUS_INSTANCE}${path}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
         }
-        results.innerHTML = "すべてのサーバーが応答しませんでした。";
-    }
+        return response.json();
+      }
 
-    function renderResults(data, instance) {
-        const results = document.getElementById('results');
-        results.innerHTML = "";
-        data.forEach(v => {
-            const card = document.createElement('div');
-            card.className = 'card';
-            // サムネイルURLを修正
-            const thumbUrl = v.videoThumbnails[0].url.startsWith('http') ? v.videoThumbnails[0].url : instance + v.videoThumbnails[0].url;
-            card.innerHTML = `
-                <img src="${thumbUrl}" class="thumb">
-                <div class="title">${v.title}</div>
-            `;
-            card.onclick = () => window.open(`https://www.youtube.com/watch?v=${v.videoId}`, '_blank');
-            results.appendChild(card);
+      // 検索（動画＋チャンネル混在）
+      async function searchInvidious(query, page = 1) {
+        const encodedQuery = encodeURIComponent(query);
+        // typeパラメータで両方取得
+        const path = `/api/v1/search?q=${encodedQuery}&page=${page}&type=video,channel`;
+        return fetchFromInvidious(path);
+      }
+
+      // チャンネルの動画一覧
+      async function getChannelVideos(channelId, page = 1) {
+        const path = `/api/v1/channels/${channelId}/videos?page=${page}`;
+        return fetchFromInvidious(path);
+      }
+
+      // --- レンダリング ---
+      function clearResults() {
+        resultsContainer.innerHTML = '';
+      }
+
+      function showLoading() {
+        clearResults();
+        resultsContainer.innerHTML = '<div class="loading">読み込み中...</div>';
+      }
+
+      function showEmpty(message = '結果が見つかりませんでした') {
+        clearResults();
+        resultsContainer.innerHTML = `<div class="empty">${message}</div>`;
+      }
+
+      // 動画カード作成
+      function createVideoCard(item) {
+        const card = document.createElement('div');
+        card.className = 'result-card';
+
+        // サムネイル（動画リンク）
+        const thumbWrapper = document.createElement('div');
+        thumbWrapper.className = 'thumbnail-wrapper';
+        const thumbImg = document.createElement('img');
+        const thumbnail = item.videoThumbnails?.[0]?.url || item.videoThumbnails?.[item.videoThumbnails.length-1]?.url || '';
+        thumbImg.src = thumbnail;
+        thumbImg.alt = item.title;
+        thumbImg.loading = 'lazy';
+        const thumbLink = document.createElement('a');
+        thumbLink.href = `${INVIDIOUS_INSTANCE}/watch?v=${item.videoId}`;
+        thumbLink.target = '_blank';
+        thumbLink.rel = 'noopener noreferrer';
+        thumbLink.appendChild(thumbImg);
+        thumbWrapper.appendChild(thumbLink);
+
+        // 情報エリア
+        const info = document.createElement('div');
+        info.className = 'info';
+
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'video-title';
+        const titleLink = document.createElement('a');
+        titleLink.href = `${INVIDIOUS_INSTANCE}/watch?v=${item.videoId}`;
+        titleLink.target = '_blank';
+        titleLink.rel = 'noopener noreferrer';
+        titleLink.textContent = item.title;
+        titleDiv.appendChild(titleLink);
+        info.appendChild(titleDiv);
+
+        // チャンネル名（クリックでチャンネル表示）
+        const channelRow = document.createElement('div');
+        channelRow.className = 'channel-row';
+        const channelSpan = document.createElement('span');
+        channelSpan.className = 'channel-name';
+        channelSpan.textContent = item.author;
+        channelSpan.dataset.authorId = item.authorId;
+        channelSpan.dataset.authorName = item.author;
+        channelSpan.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showChannelView(item.authorId, item.author);
         });
-    }
-</script>
+        channelRow.appendChild(channelSpan);
+        info.appendChild(channelRow);
+
+        // メタ情報（再生数・公開日）
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        if (item.viewCount !== undefined) {
+          meta.innerHTML += `<span>👀 ${formatNumber(item.viewCount)} 回視聴</span>`;
+        }
+        if (item.published) {
+          meta.innerHTML += `<span>🕒 ${timeAgo(item.published)}</span>`;
+        }
+        if (item.lengthSeconds) {
+          const mins = Math.floor(item.lengthSeconds / 60);
+          const secs = item.lengthSeconds % 60;
+          meta.innerHTML += `<span class="badge">${mins}:${secs.toString().padStart(2,'0')}</span>`;
+        }
+        info.appendChild(meta);
+
+        card.appendChild(thumbWrapper);
+        card.appendChild(info);
+        return card;
+      }
+
+      // チャンネルカード作成
+      function createChannelCard(item) {
+        const card = document.createElement('div');
+        card.className = 'result-card channel-card';
+        card.addEventListener('click', () => {
+          showChannelView(item.authorId, item.author);
+        });
+
+        // チャンネルアイコン
+        const thumbWrapper = document.createElement('div');
+        thumbWrapper.className = 'thumbnail-wrapper channel-thumb';
+        const iconUrl = item.authorThumbnails?.[0]?.url || '';
+        const iconImg = document.createElement('img');
+        iconImg.src = iconUrl;
+        iconImg.alt = item.author;
+        iconImg.loading = 'lazy';
+        thumbWrapper.appendChild(iconImg);
+
+        const info = document.createElement('div');
+        info.className = 'info';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'video-title';
+        nameDiv.textContent = item.author;
+        info.appendChild(nameDiv);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        if (item.subCount !== undefined) {
+          meta.innerHTML += `<span>📢 登録者 ${formatNumber(item.subCount)}</span>`;
+        }
+        if (item.videoCount !== undefined) {
+          meta.innerHTML += `<span>🎬 動画 ${item.videoCount}</span>`;
+        }
+        if (item.description) {
+          const desc = document.createElement('div');
+          desc.style.cssText = 'font-size:0.8rem;color:#666;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;';
+          desc.textContent = item.description.replace(/\n/g, ' ');
+          info.appendChild(desc);
+        }
+        info.appendChild(meta);
+
+        card.appendChild(thumbWrapper);
+        card.appendChild(info);
+        return card;
+      }
+
+      // 検索結果表示
+      function renderSearchResults(items, append = false) {
+        if (!append) {
+          clearResults();
+        }
+        if (!items || items.length === 0) {
+          if (!append) showEmpty('該当する結果がありません');
+          return;
+        }
+
+        items.forEach(item => {
+          if (item.type === 'channel') {
+            resultsContainer.appendChild(createChannelCard(item));
+          } else {
+            // 動画 (type: 'video' または type未指定)
+            resultsContainer.appendChild(createVideoCard(item));
+          }
+        });
+
+        // もっと見るボタン
+        if (items.length > 0 && searchPage < MAX_PAGES) {
+          const loadMoreDiv = document.createElement('div');
+          loadMoreDiv.className = 'load-more';
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.textContent = 'もっと見る';
+          loadMoreBtn.addEventListener('click', async () => {
+            searchPage++;
+            await loadMoreSearchResults();
+          });
+          loadMoreDiv.appendChild(loadMoreBtn);
+          resultsContainer.appendChild(loadMoreDiv);
+        } else if (searchPage >= MAX_PAGES && items.length > 0) {
+          const endMsg = document.createElement('div');
+          endMsg.className = 'loading';
+          endMsg.textContent = '表示できる上限に達しました';
+          resultsContainer.appendChild(endMsg);
+        }
+      }
+
+      async function performSearch(query, page = 1) {
+        if (isLoading) return;
+        isLoading = true;
+        if (page === 1) {
+          clearResults();
+          showLoading();
+        }
+        try {
+          const data = await searchInvidious(query, page);
+          renderSearchResults(data, page > 1);
+        } catch (error) {
+          console.error(error);
+          showEmpty('検索中にエラーが発生しました。時間をおいてお試しください。');
+        } finally {
+          isLoading = false;
+        }
+      }
+
+      async function loadMoreSearchResults() {
+        if (!currentQuery) return;
+        // ローディング表示は不要、既存リストの下に追加
+        try {
+          const data = await searchInvidious(currentQuery, searchPage);
+          if (data.length === 0) {
+            // これ以上ない
+            const endMsg = document.createElement('div');
+            endMsg.className = 'loading';
+            endMsg.textContent = 'すべての結果を表示しました';
+            resultsContainer.appendChild(endMsg);
+            return;
+          }
+          // 既存の「もっと見る」ボタンを削除してから追加
+          const oldLoadMore = resultsContainer.querySelector('.load-more');
+          if (oldLoadMore) oldLoadMore.remove();
+          const oldEndMsg = resultsContainer.querySelector('.loading');
+          if (oldEndMsg && oldEndMsg.textContent.includes('上限')) oldEndMsg.remove();
+
+          renderSearchResults(data, true);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      // チャンネルビュー表示
+      async function showChannelView(channelId, channelName) {
+        currentView = 'channel';
+        currentChannelId = channelId;
+        currentChannelName = channelName;
+        channelPage = 1;
+        backBtn.classList.remove('hidden');
+        viewTitle.textContent = `📺 ${channelName} の動画`;
+        searchInput.value = ''; // 検索欄はクリア
+        clearResults();
+        showLoading();
+        try {
+          const videos = await getChannelVideos(channelId, channelPage);
+          renderChannelVideos(videos);
+        } catch (error) {
+          console.error(error);
+          showEmpty('チャンネル情報を取得できませんでした');
+        }
+      }
+
+      function renderChannelVideos(videos, append = false) {
+        if (!append) clearResults();
+        if (!videos || videos.length === 0) {
+          if (!append) showEmpty('このチャンネルには動画がありません');
+          return;
+        }
+
+        videos.forEach(video => {
+          // チャンネル動画は通常のvideo形式でauthor情報も含まれるが、チャンネル名は同じ
+          resultsContainer.appendChild(createVideoCard(video));
+        });
+
+        if (videos.length > 0 && channelPage < MAX_PAGES) {
+          const loadMoreDiv = document.createElement('div');
+          loadMoreDiv.className = 'load-more';
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.textContent = 'さらに読み込む';
+          loadMoreBtn.addEventListener('click', async () => {
+            channelPage++;
+            try {
+              const moreVideos = await getChannelVideos(currentChannelId, channelPage);
+              if (moreVideos.length === 0) {
+                const endMsg = document.createElement('div');
+                endMsg.className = 'loading';
+                endMsg.textContent = 'すべての動画を表示しました';
+                resultsContainer.appendChild(endMsg);
+                loadMoreBtn.parentElement.remove();
+                return;
+              }
+              const oldLoadMore = resultsContainer.querySelector('.load-more');
+              if (oldLoadMore) oldLoadMore.remove();
+              renderChannelVideos(moreVideos, true);
+            } catch (error) {
+              console.error(error);
+            }
+          });
+          loadMoreDiv.appendChild(loadMoreBtn);
+          resultsContainer.appendChild(loadMoreDiv);
+        }
+      }
+
+      // 検索ビューに戻る
+      function backToSearch() {
+        currentView = 'search';
+        currentChannelId = '';
+        currentChannelName = '';
+        channelPage = 1;
+        backBtn.classList.add('hidden');
+        viewTitle.textContent = '';
+        // 検索結果が残っていれば再表示、なければ何もしない
+        if (currentQuery && searchPage >= 1) {
+          // 再検索はせず、キャッシュはないので空にする。必要なら再検索させる
+          clearResults();
+          searchInput.value = currentQuery;
+          searchPage = 1;
+          performSearch(currentQuery, 1);
+        } else {
+          clearResults();
+          searchInput.value = '';
+        }
+      }
+
+      // --- イベントハンドラ ---
+      searchForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const query = searchInput.value.trim();
+        if (!query) return;
+        currentView = 'search';
+        currentQuery = query;
+        searchPage = 1;
+        backBtn.classList.add('hidden');
+        viewTitle.textContent = '';
+        await performSearch(query, 1);
+      });
+
+      backBtn.addEventListener('click', backToSearch);
+
+      // 初期表示（任意）
+      // 特に何も表示しない
+      clearResults();
+    })();
+  </script>
 </body>
 </html>
