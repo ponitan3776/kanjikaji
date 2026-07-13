@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invidious 動画検索</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f9f9f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #ff0000;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .search-box input {
+            flex: 1;
+            padding: 12px 18px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 25px;
+            outline: none;
+            transition: 0.3s;
+        }
+        .search-box input:focus {
+            border-color: #ff0000;
+            box-shadow: 0 0 8px rgba(255,0,0,0.2);
+        }
+        .search-box button {
+            padding: 12px 30px;
+            background: #ff0000;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .search-box button:hover {
+            background: #cc0000;
+        }
+        #results {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+        }
+        .video-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .video-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .video-card img {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            background: #eee;
+        }
+        .video-info {
+            padding: 14px;
+        }
+        .video-title {
+            font-weight: 600;
+            font-size: 15px;
+            margin: 0 0 6px 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .channel-name {
+            color: #606060;
+            font-size: 14px;
+            margin: 0 0 4px 0;
+        }
+        .video-meta {
+            color: #888;
+            font-size: 13px;
+            margin: 0;
+        }
+        .loading {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+            padding: 50px;
+        }
+        .no-result {
+            text-align: center;
+            font-size: 18px;
+            color: #999;
+            padding: 50px;
+        }
+        /* サムネイルの上に再生時間を表示 */
+        .thumbnail-wrapper {
+            position: relative;
+        }
+        .duration {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>▶️ Invidius 動画検索</h1>
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="動画のタイトルやYouTuber名を入力..." onkeydown="if(event.key==='Enter') searchVideos()">
+        <button onclick="searchVideos()">検索</button>
+    </div>
+    <div id="results">
+        <div class="loading">🔍 キーワードを入れて検索してみてください</div>
+    </div>
+</div>
+
+<script>
+    async function searchVideos() {
+        const query = document.getElementById('searchInput').value.trim();
+        if (!query) {
+            alert('検索ワードを入力してください');
+            return;
+        }
+
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '<div class="loading">⏳ 読み込み中...</div>';
+
+        try {
+            const response = await fetch(`/search?q=${encodeURIComponent(query)}&limit=20`);
+            const data = await response.json();
+
+            if (data.error) {
+                resultsDiv.innerHTML = `<div class="no-result">❌ ${data.error}</div>`;
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-result">😞 動画が見つかりませんでした</div>';
+                return;
+            }
+
+            // カードを生成
+            let html = '';
+            data.forEach(video => {
+                const thumb = `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
+                // 再生時間を分:秒に変換
+                const seconds = video.lengthSeconds || 0;
+                const minutes = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                const duration = seconds > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : '';
+
+                // クリックでその動画をInvidiousインスタンスで開く
+                const watchUrl = `https://y.com.sb/watch?v=${video.videoId}`;
+
+                html += `
+                    <div class="video-card" onclick="window.open('${watchUrl}', '_blank')">
+                        <div class="thumbnail-wrapper">
+                            <img src="${thumb}" alt="サムネイル" loading="lazy" onerror="this.src='https://via.placeholder.com/320x180?text=No+Image'">
+                            ${duration ? `<span class="duration">${duration}</span>` : ''}
+                        </div>
+                        <div class="video-info">
+                            <p class="video-title">${escapeHtml(video.title)}</p>
+                            <p class="channel-name">🧑‍💻 ${escapeHtml(video.author)}</p>
+                            <p class="video-meta">👁️ ${video.viewCount?.toLocaleString() || 0} 回再生  •  ${video.published || ''}</p>
+                        </div>
+                    </div>
+                `;
+            });
+            resultsDiv.innerHTML = html;
+
+        } catch (error) {
+            resultsDiv.innerHTML = `<div class="no-result">⚠️ エラーが発生しました: ${error.message}</div>`;
+        }
+    }
+
+    // XSS対策の簡易エスケープ
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+</body>
+</html>
