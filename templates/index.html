@@ -5,20 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invidious 動画検索</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            background: #f9f9f9;
+            background: #0f0f0f;
+            color: #fff;
             margin: 0;
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1300px;
             margin: 0 auto;
         }
         h1 {
             color: #ff0000;
-            border-bottom: 2px solid #ddd;
+            border-bottom: 2px solid #333;
             padding-bottom: 10px;
+            margin-top: 0;
         }
         .search-box {
             display: flex;
@@ -27,19 +32,24 @@
         }
         .search-box input {
             flex: 1;
-            padding: 12px 18px;
+            padding: 14px 20px;
             font-size: 16px;
-            border: 1px solid #ccc;
+            border: 1px solid #333;
             border-radius: 25px;
             outline: none;
+            background: #1a1a1a;
+            color: #fff;
             transition: 0.3s;
         }
         .search-box input:focus {
             border-color: #ff0000;
-            box-shadow: 0 0 8px rgba(255,0,0,0.2);
+            box-shadow: 0 0 8px rgba(255,0,0,0.3);
+        }
+        .search-box input::placeholder {
+            color: #888;
         }
         .search-box button {
-            padding: 12px 30px;
+            padding: 14px 35px;
             background: #ff0000;
             color: white;
             border: none;
@@ -52,64 +62,98 @@
         .search-box button:hover {
             background: #cc0000;
         }
-        #results {
+
+        /* レイアウト：左が動画一覧、右がプレイヤー */
+        .main-layout {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        .video-list {
+            flex: 1;
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 25px;
+            gap: 20px;
         }
+        .player-wrapper {
+            flex: 0 0 45%;
+            position: sticky;
+            top: 20px;
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid #333;
+        }
+        .player-wrapper iframe {
+            width: 100%;
+            aspect-ratio: 16/9;
+            border-radius: 8px;
+            border: none;
+        }
+        .player-wrapper .video-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 12px 0 6px 0;
+            color: #fff;
+        }
+        .player-wrapper .channel-name {
+            color: #aaa;
+            font-size: 14px;
+        }
+        .player-placeholder {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+            font-size: 18px;
+        }
+        .player-placeholder span {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 16px;
+        }
+
         .video-card {
-            background: white;
+            background: #1a1a1a;
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
             cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #2a2a2a;
         }
         .video-card:hover {
             transform: scale(1.02);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            border-color: #ff0000;
+            box-shadow: 0 4px 20px rgba(255,0,0,0.15);
         }
         .video-card img {
             width: 100%;
             aspect-ratio: 16/9;
             object-fit: cover;
-            background: #eee;
+            background: #222;
         }
         .video-info {
-            padding: 14px;
+            padding: 12px 14px;
         }
         .video-title {
             font-weight: 600;
-            font-size: 15px;
-            margin: 0 0 6px 0;
+            font-size: 14px;
+            margin: 0 0 4px 0;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            color: #fff;
         }
         .channel-name {
-            color: #606060;
-            font-size: 14px;
+            color: #aaa;
+            font-size: 13px;
             margin: 0 0 4px 0;
         }
         .video-meta {
-            color: #888;
-            font-size: 13px;
+            color: #666;
+            font-size: 12px;
             margin: 0;
         }
-        .loading {
-            text-align: center;
-            font-size: 18px;
-            color: #555;
-            padding: 50px;
-        }
-        .no-result {
-            text-align: center;
-            font-size: 18px;
-            color: #999;
-            padding: 50px;
-        }
-        /* サムネイルの上に再生時間を表示 */
         .thumbnail-wrapper {
             position: relative;
         }
@@ -121,8 +165,37 @@
             color: white;
             padding: 2px 8px;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
+        }
+        .loading {
+            text-align: center;
+            font-size: 18px;
+            color: #888;
+            padding: 50px;
+        }
+        .no-result {
+            text-align: center;
+            font-size: 18px;
+            color: #666;
+            padding: 50px;
+        }
+
+        /* スマホ対応：プレイヤーを下に */
+        @media (max-width: 900px) {
+            .main-layout {
+                flex-direction: column;
+            }
+            .player-wrapper {
+                flex: 1;
+                width: 100%;
+                position: relative;
+                top: 0;
+                order: -1;
+            }
+            .video-list {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            }
         }
     </style>
 </head>
@@ -133,12 +206,31 @@
         <input type="text" id="searchInput" placeholder="動画のタイトルやYouTuber名を入力..." onkeydown="if(event.key==='Enter') searchVideos()">
         <button onclick="searchVideos()">検索</button>
     </div>
-    <div id="results">
-        <div class="loading">🔍 キーワードを入れて検索してみてください</div>
+
+    <div class="main-layout">
+        <!-- 右：プレイヤー -->
+        <div class="player-wrapper" id="playerWrapper">
+            <div class="player-placeholder" id="playerPlaceholder">
+                <span>🎬</span>
+                動画をクリックすると<br>ここに再生されます
+            </div>
+            <div id="playerContainer" style="display:none;">
+                <iframe id="playerIframe" src="" allowfullscreen></iframe>
+                <div class="video-title" id="playerTitle"></div>
+                <div class="channel-name" id="playerChannel"></div>
+            </div>
+        </div>
+
+        <!-- 左：動画一覧 -->
+        <div class="video-list" id="results">
+            <div class="loading">🔍 キーワードを入れて検索してみてください</div>
+        </div>
     </div>
 </div>
 
 <script>
+    let currentVideos = [];
+
     async function searchVideos() {
         const query = document.getElementById('searchInput').value.trim();
         if (!query) {
@@ -163,47 +255,72 @@
                 return;
             }
 
-            // カードを生成
+            currentVideos = data;
+
             let html = '';
-            data.forEach(video => {
+            data.forEach((video, index) => {
                 const thumb = `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
-                // 再生時間を分:秒に変換
                 const seconds = video.lengthSeconds || 0;
                 const minutes = Math.floor(seconds / 60);
                 const secs = seconds % 60;
                 const duration = seconds > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : '';
 
-                // クリックでその動画をInvidiousインスタンスで開く
-                const watchUrl = `https://y.com.sb/watch?v=${video.videoId}`;
-
                 html += `
-                    <div class="video-card" onclick="window.open('${watchUrl}', '_blank')">
+                    <div class="video-card" onclick="playVideo(${index})">
                         <div class="thumbnail-wrapper">
                             <img src="${thumb}" alt="サムネイル" loading="lazy" onerror="this.src='https://via.placeholder.com/320x180?text=No+Image'">
                             ${duration ? `<span class="duration">${duration}</span>` : ''}
                         </div>
                         <div class="video-info">
                             <p class="video-title">${escapeHtml(video.title)}</p>
-                            <p class="channel-name">🧑‍💻 ${escapeHtml(video.author)}</p>
-                            <p class="video-meta">👁️ ${video.viewCount?.toLocaleString() || 0} 回再生  •  ${video.published || ''}</p>
+                            <p class="channel-name">${escapeHtml(video.author)}</p>
+                            <p class="video-meta">👁️ ${video.viewCount?.toLocaleString() || 0} 回再生</p>
                         </div>
                     </div>
                 `;
             });
             resultsDiv.innerHTML = html;
 
+            // 最初の動画を自動再生（任意）
+            if (data.length > 0) {
+                playVideo(0);
+            }
+
         } catch (error) {
             resultsDiv.innerHTML = `<div class="no-result">⚠️ エラーが発生しました: ${error.message}</div>`;
         }
     }
 
-    // XSS対策の簡易エスケープ
+    function playVideo(index) {
+        const video = currentVideos[index];
+        if (!video) return;
+
+        // Invidiousの埋め込みURL（y.com.sbを使う）
+        const embedUrl = `https://y.com.sb/embed/${video.videoId}`;
+
+        // プレイヤーを表示
+        document.getElementById('playerPlaceholder').style.display = 'none';
+        const container = document.getElementById('playerContainer');
+        container.style.display = 'block';
+
+        // iframeに埋め込みURLをセット
+        document.getElementById('playerIframe').src = embedUrl;
+        document.getElementById('playerTitle').textContent = video.title;
+        document.getElementById('playerChannel').textContent = `🧑‍💻 ${video.author}`;
+    }
+
     function escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
+
+    // ページ読み込み時にプレイヤーを非表示にしておく
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('playerContainer').style.display = 'none';
+        document.getElementById('playerPlaceholder').style.display = 'block';
+    });
 </script>
 </body>
 </html>
