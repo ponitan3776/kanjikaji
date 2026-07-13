@@ -1,0 +1,39 @@
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.Scanner;
+
+public class InvidiousClient {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("YouTubeの動画IDを入力してください: ");
+        String videoId = scanner.nextLine();
+        
+        // インスタンスURL (必要に応じて変更可能)
+        String instance = "https://invidious.privacydev.net";
+        String apiUrl = instance + "/api/v1/videos/" + videoId;
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(apiUrl))
+                .GET()
+                .build();
+
+        try {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                String body = response.body();
+                // 簡易的な抽出 (本番環境ではJacksonやGsonなどのライブラリでJSONパースを推奨)
+                System.out.println("--- 動画情報 ---");
+                System.out.println(body); 
+            } else {
+                System.out.println("エラー: ステータスコード " + response.statusCode());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        scanner.close();
+    }
+}
