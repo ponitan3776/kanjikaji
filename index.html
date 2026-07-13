@@ -1,39 +1,55 @@
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.Scanner;
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MyTube Viewer</title>
+    <style>
+        body { font-family: sans-serif; background: #0f0f0f; color: white; padding: 20px; }
+        .search-box { margin-bottom: 20px; text-align: center; }
+        .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .card { background: #1e1e1e; padding: 10px; border-radius: 8px; }
+        .card img { width: 100%; border-radius: 8px; }
+        .card h3 { font-size: 1rem; margin: 10px 0; }
+    </style>
+</head>
+<body>
 
-public class InvidiousClient {
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("YouTubeの動画IDを入力してください: ");
-        String videoId = scanner.nextLine();
+<div class="search-box">
+    <input type="text" id="searchInput" placeholder="動画を検索...">
+    <button onclick="searchVideos()">検索</button>
+</div>
+
+<div class="results" id="results"></div>
+
+<script>
+    async function searchVideos() {
+        const query = document.getElementById('searchInput').value;
+        const resultsDiv = document.getElementById('results');
+        const instance = "https://invidious.privacydev.net";
         
-        // インスタンスURL (必要に応じて変更可能)
-        String instance = "https://invidious.privacydev.net";
-        String apiUrl = instance + "/api/v1/videos/" + videoId;
-
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiUrl))
-                .GET()
-                .build();
+        resultsDiv.innerHTML = "検索中...";
 
         try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            const res = await fetch(`${instance}/api/v1/search?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
             
-            if (response.statusCode() == 200) {
-                String body = response.body();
-                // 簡易的な抽出 (本番環境ではJacksonやGsonなどのライブラリでJSONパースを推奨)
-                System.out.println("--- 動画情報 ---");
-                System.out.println(body); 
-            } else {
-                System.out.println("エラー: ステータスコード " + response.statusCode());
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+            resultsDiv.innerHTML = "";
+            data.forEach(video => {
+                if (video.type === "video") {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <img src="${video.videoThumbnails[0].url}" alt="thumbnail">
+                        <h3>${video.title}</h3>
+                        <p>${video.author}</p>
+                    `;
+                    resultsDiv.appendChild(card);
+                }
+            });
+        } catch (e) {
+            resultsDiv.innerHTML = "エラーが発生しました。";
         }
-        scanner.close();
     }
-}
+</script>
+</body>
+</html>
