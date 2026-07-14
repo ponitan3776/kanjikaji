@@ -57,7 +57,9 @@ def search():
 
 @app.route("/stream/<video_id>")
 def stream_video(video_id):
-    """動画ストリーミング（デバッグ強化版）"""
+    """
+    動画ストリーミング（itag指定版・確実に動画を選ぶ）
+    """
     instance = get_instance()
     
     try:
@@ -69,46 +71,50 @@ def stream_video(video_id):
         info_resp.raise_for_status()
         video_info = info_resp.json()
         
-        # 2. ストリーム一覧取得（formatStreams優先）
-        streams = video_info.get("formatStreams", [])
-        if not streams:
-            streams = video_info.get("adaptiveFormats", [])
+        # 2. 全ストリームを結合
+        streams = video_info.get("formatStreams", []) + video_info.get("adaptiveFormats", [])
         
         if not streams:
-            return jsonify({"error": "ストリームなし"}), 404
+            return jsonify({"error": "ストリームがありません"}), 404
         
-        # 3. 最適ストリーム選択（音声＋動画が確実なもの）
-        selected = None
-        for s in streams:
-            # video/mp4 または video/webm で、かつ音声を含むもの優先
-            if "video/mp4" in s.get("type", "") or "video/webm" in s.get("type", ""):
-                if "audio" in s.get("type", "") or "formatStreams" in str(streams):
-                    selected = s
+        # 3. ★ itag指定で確実に選ぶ（18=360p, 22=720p, 36=240p）
+        selected_stream = None
+        target_itags = [22, 18, 36]  # 高画質→低画質の順
+        
+        for itag in target_itags:
+            for stream in streams:
+                if stream.get("itag") == itag:
+                    selected_stream = stream
                     break
-        # 見つからなければ最初のvideo
-        if not selected:
-            for s in streams:
-                if "video" in s.get("type", ""):
-                    selected = s
+            if selected_stream:
+                break
+        
+        # 見つからなければ、video/mp4 を探す（フォールバック）
+        if not selected_stream:
+            for stream in streams:
+                if "video/mp4" in stream.get("type", ""):
+                    selected_stream = stream
                     break
         
-        if not selected:
-            return jsonify({"error": "再生可能なストリームなし"}), 404
+        if not selected_stream:
+            return jsonify({"error": "再生可能なストリームが見つかりません"}), 404
         
-        # 4. URL取得（絶対パスに変換）
-        stream_url = selected.get("url")
+        # 4. ストリームURL取得
+        stream_url = selected_stream.get("url")
         if not stream_url:
-            return jsonify({"error": "URL取得失敗"}), 404
+            return jsonify({"error": "URLが取得できません"}), 404
         
+        # 相対パス変換
         if stream_url.startswith("/"):
             stream_url = instance + stream_url
         
-        # ★ デバッグ情報をレスポンスヘッダに追加（画面上で見えないけどログには出る）
-        print(f"[DEBUG] video_id: {video_id}")
-        print(f"[DEBUG] stream_url: {stream_url}")
-        print(f"[DEBUG] content_type: {selected.get('type', 'unknown')}")
+        # ★ デバッグ用（Renderのログに出力）
+        print(f"🎬 動画ID: {video_id}")
+        print(f"🔗 ストリームURL: {stream_url}")
+        print(f"📁 itag: {selected_stream.get('itag')}")
+        print(f"📄 Content-Type: {selected_stream.get('type')}")
         
-        # 5. ストリーミング転送
+        # 5. ストリーミング転送（エラー時に空を返さないようにする）
         def generate():
             try:
                 headers = {
@@ -116,17 +122,25 @@ def stream_video(video_id):
                     "Range": "bytes=0-"
                 }
                 with requests.get(stream_url, stream=True, timeout=30, headers=headers) as r:
+                    # ステータスコードが200か206でない場合はエラーとして扱う
+                    if r.status_code not in [200, 206]:
+                        error_msg = f"ストリーム取得失敗: HTTP {r.status_code}"
+                        print(error_msg)
+                        yield b""
+                        return
+                    
                     r.raise_for_status()
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             yield chunk
             except Exception as e:
-                # エラーが起きたら空じゃなくてエラーメッセージを返す
-                error_msg = f"ストリーミングエラー: {str(e)}"
+                error_msg = f"ストリーミング例外: {str(e)}"
                 print(error_msg)
+                # エラーが起きたら空を返す（ブラウザ側でコード4になる）
                 yield b""
         
-        content_type = selected.get("type", "video/mp4")
+        # コンテンツタイプ設定
+        content_type = selected_stream.get("type", "video/mp4")
         if ";" in content_type:
             content_type = content_type.split(";")[0]
         
@@ -140,7 +154,7 @@ def stream_video(video_id):
         )
         
     except Exception as e:
-        error_msg = f"動画取得失敗: {str(e)}"
+        error_msg = f"動画取得エラー: {str(e)}"
         print(error_msg)
         return jsonify({"error": error_msg}), 500
 
