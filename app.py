@@ -5,17 +5,14 @@ from flask import Flask, request, render_template, jsonify, Response, stream_wit
 
 app = Flask(__name__)
 
-# 安定版インスタンスリスト
 DEFAULT_INSTANCES = [
     "https://invidious.privacydev.net",
     "https://y.com.sb",
     "https://inv.in.projectsegfau.lt",
-    "https://invidious.nerdvpn.de",
-    "https://iv.ggtyler.dev"
+    "https://invidious.nerdvpn.de"
 ]
 
 def get_instance():
-    """環境変数があればそれを使う。なければランダム選択"""
     env_url = os.environ.get("INVIDIOUS_INSTANCE")
     if env_url:
         return env_url.rstrip("/")
@@ -27,134 +24,109 @@ def home():
 
 @app.route("/search")
 def search():
-    """検索エンドポイント（複数インスタンス自動切替）"""
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "検索ワードを入力してください"}), 400
 
     limit = int(request.args.get("limit", 20))
-    
-    # 環境変数があれば優先、なければリストを順に試す
+    instances_to_try = DEFAULT_INSTANCES.copy()
     env_instance = os.environ.get("INVIDIOUS_INSTANCE")
-    instances_to_try = [env_instance] if env_instance else DEFAULT_INSTANCES.copy()
+    if env_instance:
+        instances_to_try = [env_instance] + [i for i in instances_to_try if i != env_instance]
     
-    if env_instance and env_instance in DEFAULT_INSTANCES:
-        instances_to_try = [env_instance] + [i for i in DEFAULT_INSTANCES if i != env_instance]
-    elif not env_instance:
-        instances_to_try = DEFAULT_INSTANCES.copy()
-    
-    last_error = None
     for instance in instances_to_try:
         try:
-            url = f"{instance}/api/v1/search"
-            params = {
-                "q": query,
-                "type": "video",
-                "limit": min(limit, 20)
-            }
-            
-            resp = requests.get(url, params=params, timeout=10)
+            resp = requests.get(
+                f"{instance}/api/v1/search",
+                params={"q": query, "type": "video", "limit": min(limit, 20)},
+                timeout=10
+            )
             resp.raise_for_status()
             data = resp.json()
-            
-            results = []
-            for item in data:
-                results.append({
-                    "title": item.get("title", "タイトルなし"),
-                    "author": item.get("author", "不明なチャンネル"),
-                    "videoId": item.get("videoId", ""),
-                    "channelId": item.get("channelId", ""),
-                    "lengthSeconds": item.get("lengthSeconds", 0),
-                    "published": item.get("publishedText", ""),
-                    "viewCount": item.get("viewCount", 0)
-                })
+            results = [{
+                "title": item.get("title", "タイトルなし"),
+                "author": item.get("author", "不明"),
+                "videoId": item.get("videoId", ""),
+                "lengthSeconds": item.get("lengthSeconds", 0),
+                "viewCount": item.get("viewCount", 0)
+            } for item in data]
             return jsonify(results)
-            
         except Exception as e:
-            last_error = str(e)
             continue
-    
-    return jsonify({"error": f"全てのインスタンスが失敗しました: {last_error}"}), 500
+    return jsonify({"error": "全てのインスタンスが失敗しました"}), 500
 
 @app.route("/stream/<video_id>")
 def stream_video(video_id):
-    """
-    動画ストリーミング（完全版）
-    - 高さ制限なし
-    - 相対URL対応
-    - User-Agent偽装
-    - エラーハンドリング強化
-    """
+    """動画ストリーミング（デバッグ強化版）"""
     instance = get_instance()
     
     try:
         # 1. 動画情報取得
         info_url = f"{instance}/api/v1/videos/{video_id}"
-        info_resp = requests.get(info_url, timeout=10)
+        info_resp = requests.get(info_url, timeout=10, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
         info_resp.raise_for_status()
         video_info = info_resp.json()
         
-        # 2. 全ストリームを結合
-        streams = video_info.get("formatStreams", []) + video_info.get("adaptiveFormats", [])
+        # 2. ストリーム一覧取得（formatStreams優先）
+        streams = video_info.get("formatStreams", [])
+        if not streams:
+            streams = video_info.get("adaptiveFormats", [])
         
         if not streams:
-            return jsonify({"error": "ストリームが見つかりません"}), 404
+            return jsonify({"error": "ストリームなし"}), 404
         
-        # 3. 最適なストリームを選択（高さ制限なし！）
-        selected_stream = None
-        
-        # 優先1: video/mp4 または video/webm
-        for stream in streams:
-            stream_type = stream.get("type", "")
-            if stream_type.startswith("video/mp4") or stream_type.startswith("video/webm"):
-                selected_stream = stream
-                break
-        
-        # 優先2: 音声付き動画（formatStreamsに多い）
-        if not selected_stream:
-            for stream in streams:
-                if "video" in stream.get("type", "") and "audio" in stream.get("type", ""):
-                    selected_stream = stream
+        # 3. 最適ストリーム選択（音声＋動画が確実なもの）
+        selected = None
+        for s in streams:
+            # video/mp4 または video/webm で、かつ音声を含むもの優先
+            if "video/mp4" in s.get("type", "") or "video/webm" in s.get("type", ""):
+                if "audio" in s.get("type", "") or "formatStreams" in str(streams):
+                    selected = s
+                    break
+        # 見つからなければ最初のvideo
+        if not selected:
+            for s in streams:
+                if "video" in s.get("type", ""):
+                    selected = s
                     break
         
-        # 優先3: とにかくvideoが含まれるもの
-        if not selected_stream:
-            for stream in streams:
-                if "video" in stream.get("type", ""):
-                    selected_stream = stream
-                    break
+        if not selected:
+            return jsonify({"error": "再生可能なストリームなし"}), 404
         
-        if not selected_stream:
-            return jsonify({"error": "再生可能なストリームが見つかりません"}), 404
-        
-        # 4. ストリームURL取得（相対パス対応）
-        stream_url = selected_stream.get("url")
+        # 4. URL取得（絶対パスに変換）
+        stream_url = selected.get("url")
         if not stream_url:
-            return jsonify({"error": "ストリームURLが取得できません"}), 404
+            return jsonify({"error": "URL取得失敗"}), 404
         
-        # 相対パス（/から始まる）ならベースURLと結合
         if stream_url.startswith("/"):
             stream_url = instance + stream_url
         
-        # 5. User-Agent偽装（ブロック回避）
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+        # ★ デバッグ情報をレスポンスヘッダに追加（画面上で見えないけどログには出る）
+        print(f"[DEBUG] video_id: {video_id}")
+        print(f"[DEBUG] stream_url: {stream_url}")
+        print(f"[DEBUG] content_type: {selected.get('type', 'unknown')}")
         
-        # 6. ストリーミング転送
+        # 5. ストリーミング転送
         def generate():
             try:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Range": "bytes=0-"
+                }
                 with requests.get(stream_url, stream=True, timeout=30, headers=headers) as r:
                     r.raise_for_status()
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
                             yield chunk
             except Exception as e:
-                print(f"ストリーミングエラー: {e}")
+                # エラーが起きたら空じゃなくてエラーメッセージを返す
+                error_msg = f"ストリーミングエラー: {str(e)}"
+                print(error_msg)
                 yield b""
         
-        # コンテンツタイプ設定
-        content_type = selected_stream.get("type", "video/mp4")
+        content_type = selected.get("type", "video/mp4")
         if ";" in content_type:
             content_type = content_type.split(";")[0]
         
@@ -167,13 +139,11 @@ def stream_video(video_id):
             }
         )
         
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "動画取得がタイムアウトしました"}), 504
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"動画取得失敗: {str(e)}"}), 500
     except Exception as e:
-        return jsonify({"error": f"予期せぬエラー: {str(e)}"}), 500
+        error_msg = f"動画取得失敗: {str(e)}"
+        print(error_msg)
+        return jsonify({"error": error_msg}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)
