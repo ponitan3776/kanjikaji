@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invidious 動画検索</title>
+    <title>ようつべ</title>
     <style>
         * {
             box-sizing: border-box;
@@ -16,7 +16,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1300px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         h1 {
@@ -63,7 +63,7 @@
             background: #cc0000;
         }
 
-        /* レイアウト：左が動画一覧、右がプレイヤー */
+        /* メインレイアウト */
         .main-layout {
             display: flex;
             gap: 30px;
@@ -76,7 +76,7 @@
             gap: 20px;
         }
         .player-wrapper {
-            flex: 0 0 45%;
+            flex: 0 0 48%;
             position: sticky;
             top: 20px;
             background: #1a1a1a;
@@ -84,11 +84,11 @@
             padding: 16px;
             border: 1px solid #333;
         }
-        .player-wrapper iframe {
+        .player-wrapper video {
             width: 100%;
             aspect-ratio: 16/9;
             border-radius: 8px;
-            border: none;
+            background: #000;
         }
         .player-wrapper .video-title {
             font-size: 18px;
@@ -121,7 +121,7 @@
             border: 1px solid #2a2a2a;
         }
         .video-card:hover {
-            transform: scale(1.02);
+            transform: scale(1.03);
             border-color: #ff0000;
             box-shadow: 0 4px 20px rgba(255,0,0,0.15);
         }
@@ -181,7 +181,7 @@
             padding: 50px;
         }
 
-        /* スマホ対応：プレイヤーを下に */
+        /* スマホ対応 */
         @media (max-width: 900px) {
             .main-layout {
                 flex-direction: column;
@@ -215,7 +215,7 @@
                 動画をクリックすると<br>ここに再生されます
             </div>
             <div id="playerContainer" style="display:none;">
-                <iframe id="playerIframe" src="" allowfullscreen></iframe>
+                <video id="playerVideo" controls></video>
                 <div class="video-title" id="playerTitle"></div>
                 <div class="channel-name" id="playerChannel"></div>
             </div>
@@ -281,7 +281,7 @@
             });
             resultsDiv.innerHTML = html;
 
-            // 最初の動画を自動再生（任意）
+            // 最初の動画を自動再生
             if (data.length > 0) {
                 playVideo(0);
             }
@@ -295,16 +295,23 @@
         const video = currentVideos[index];
         if (!video) return;
 
-        // Invidiousの埋め込みURL（y.com.sbを使う）
-        const embedUrl = `https://y.com.sb/embed/${video.videoId}`;
+        // 自分のサーバー経由で動画をストリーミング！
+        const streamUrl = `/stream/${video.videoId}`;
 
         // プレイヤーを表示
         document.getElementById('playerPlaceholder').style.display = 'none';
         const container = document.getElementById('playerContainer');
         container.style.display = 'block';
 
-        // iframeに埋め込みURLをセット
-        document.getElementById('playerIframe').src = embedUrl;
+        // videoタグにストリームURLをセット
+        const videoElement = document.getElementById('playerVideo');
+        videoElement.src = streamUrl;
+        videoElement.load();  // 再読み込み
+        videoElement.play().catch(e => {
+            console.log('自動再生がブロックされました:', e);
+        });
+
+        // タイトルとチャンネル名を更新
         document.getElementById('playerTitle').textContent = video.title;
         document.getElementById('playerChannel').textContent = `🧑‍💻 ${video.author}`;
     }
