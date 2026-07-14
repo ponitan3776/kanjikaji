@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>ようつべ</title>
+    <title>Invidious 動画検索</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -61,7 +61,6 @@
         }
         .loading, .no-result { text-align: center; font-size: 16px; color: #888; padding: 40px 20px; grid-column: 1 / -1; }
 
-        /* デバッグエリア */
         #debugArea {
             background: #1a1a2a;
             border: 1px solid #4444aa;
@@ -73,7 +72,7 @@
             margin-bottom: 12px;
             display: none;
             word-break: break-all;
-            max-height: 200px;
+            max-height: 300px;
             overflow-y: auto;
             white-space: pre-wrap;
         }
@@ -213,22 +212,23 @@
 
         const videoEl = document.getElementById('playerVideo');
         
-        // ★ エラーコードを日本語で表示
+        // ★ エラーハンドリングを強化（コードとメッセージを表示）
         videoEl.onerror = function(e) {
             const err = videoEl.error;
-            let codeMsg = '';
+            let msg = `❌ エラーコード: ${err ? err.code : '不明'}\n`;
             if (err) {
                 switch(err.code) {
-                    case 1: codeMsg = 'MEDIA_ERR_ABORTED (読み込み中止)'; break;
-                    case 2: codeMsg = 'MEDIA_ERR_NETWORK (ネットワークエラー)'; break;
-                    case 3: codeMsg = 'MEDIA_ERR_DECODE (デコードエラー)'; break;
-                    case 4: codeMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED (形式非対応 or URL無効)'; break;
-                    default: codeMsg = '不明なエラー';
+                    case 1: msg += 'MEDIA_ERR_ABORTED (読み込み中止)\n'; break;
+                    case 2: msg += 'MEDIA_ERR_NETWORK (ネットワークエラー)\n'; break;
+                    case 3: msg += 'MEDIA_ERR_DECODE (デコードエラー)\n'; break;
+                    case 4: msg += 'MEDIA_ERR_SRC_NOT_SUPPORTED (形式非対応/URL無効)\n'; break;
+                    default: msg += '不明なエラーコード\n';
                 }
-                debugLog(`❌ エラーコード: ${err.code} (${codeMsg})\n動画ID: ${videoId}\nメッセージ: ${err.message || 'なし'}`, 'error');
-            } else {
-                debugLog(`❌ 不明なエラー (ID: ${videoId})`, 'error');
+                msg += `メッセージ: ${err.message || '(空)'}\n`;
             }
+            msg += `動画ID: ${videoId}\n`;
+            msg += `ストリームURL: ${streamUrl}`;
+            debugLog(msg, 'error');
             console.error('Video Error:', err);
         };
 
@@ -246,7 +246,7 @@
         videoEl.load();
         videoEl.play().catch(function(e) {
             console.log('自動再生ブロック:', e);
-            debugLog(`ℹ️ 自動再生ブロックされました (ID: ${videoId})。再生ボタンを押してください`, 'warn');
+            debugLog(`ℹ️ 自動再生がブロックされました (ID: ${videoId})。再生ボタンを押してください`, 'warn');
         });
 
         document.getElementById('playerTitle').textContent = video.title;
