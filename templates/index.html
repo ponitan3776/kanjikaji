@@ -127,7 +127,7 @@
         el.className = type || '';
         el.textContent = msg;
         if (type !== 'error') {
-            setTimeout(() => { el.style.display = 'none'; }, 15000);
+            setTimeout(() => { el.style.display = 'none'; }, 20000);
         }
     }
 
@@ -212,7 +212,7 @@
 
         const videoEl = document.getElementById('playerVideo');
         
-        // ★ エラーハンドリングを強化（コードとメッセージを表示）
+        // エラーハンドリング（詳細表示）
         videoEl.onerror = function(e) {
             const err = videoEl.error;
             let msg = `❌ エラーコード: ${err ? err.code : '不明'}\n`;
@@ -232,12 +232,10 @@
             console.error('Video Error:', err);
         };
 
-        // 読み込み成功
         videoEl.onloadeddata = function() {
             debugLog(`✅ 動画読み込み成功！ (ID: ${videoId})`, 'success');
         };
 
-        // 読み込み中
         videoEl.onloadstart = function() {
             debugLog(`⏳ 読み込み中... (ID: ${videoId})`, 'warn');
         };
