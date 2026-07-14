@@ -2,18 +2,20 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Invidious 動画検索</title>
     <style>
         * {
             box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
+            font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
             background: #0f0f0f;
             color: #fff;
-            margin: 0;
-            padding: 20px;
+            padding: 12px;
+            min-height: 100vh;
         }
         .container {
             max-width: 1400px;
@@ -21,25 +23,26 @@
         }
         h1 {
             color: #ff0000;
+            font-size: 22px;
             border-bottom: 2px solid #333;
             padding-bottom: 10px;
-            margin-top: 0;
+            margin-bottom: 16px;
         }
         .search-box {
             display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
+            gap: 8px;
+            margin-bottom: 20px;
         }
         .search-box input {
             flex: 1;
-            padding: 14px 20px;
+            padding: 12px 16px;
             font-size: 16px;
             border: 1px solid #333;
             border-radius: 25px;
             outline: none;
             background: #1a1a1a;
             color: #fff;
-            transition: 0.3s;
+            -webkit-appearance: none;
         }
         .search-box input:focus {
             border-color: #ff0000;
@@ -49,7 +52,7 @@
             color: #888;
         }
         .search-box button {
-            padding: 14px 35px;
+            padding: 12px 24px;
             background: #ff0000;
             color: white;
             border: none;
@@ -57,32 +60,25 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.2s;
+            white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
         }
-        .search-box button:hover {
-            background: #cc0000;
+        .search-box button:active {
+            opacity: 0.7;
         }
 
-        /* メインレイアウト */
         .main-layout {
             display: flex;
-            gap: 30px;
-            align-items: flex-start;
-        }
-        .video-list {
-            flex: 1;
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
+            flex-direction: column;
+            gap: 16px;
         }
         .player-wrapper {
-            flex: 0 0 48%;
-            position: sticky;
-            top: 20px;
+            width: 100%;
             background: #1a1a1a;
             border-radius: 12px;
-            padding: 16px;
+            padding: 12px;
             border: 1px solid #333;
+            order: -1;
         }
         .player-wrapper video {
             width: 100%;
@@ -91,10 +87,11 @@
             background: #000;
         }
         .player-wrapper .video-title {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
-            margin: 12px 0 6px 0;
+            margin: 10px 0 4px 0;
             color: #fff;
+            word-break: break-word;
         }
         .player-wrapper .channel-name {
             color: #aaa;
@@ -102,28 +99,31 @@
         }
         .player-placeholder {
             text-align: center;
-            padding: 60px 20px;
+            padding: 50px 20px;
             color: #888;
-            font-size: 18px;
+            font-size: 16px;
         }
         .player-placeholder span {
-            font-size: 48px;
+            font-size: 40px;
             display: block;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
 
+        .video-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+        }
         .video-card {
             background: #1a1a1a;
-            border-radius: 12px;
+            border-radius: 10px;
             overflow: hidden;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
             border: 1px solid #2a2a2a;
+            -webkit-tap-highlight-color: transparent;
         }
-        .video-card:hover {
-            transform: scale(1.03);
-            border-color: #ff0000;
-            box-shadow: 0 4px 20px rgba(255,0,0,0.15);
+        .video-card:active {
+            transform: scale(0.97);
         }
         .video-card img {
             width: 100%;
@@ -132,26 +132,27 @@
             background: #222;
         }
         .video-info {
-            padding: 12px 14px;
+            padding: 8px 10px;
         }
         .video-title {
             font-weight: 600;
-            font-size: 14px;
-            margin: 0 0 4px 0;
+            font-size: 13px;
+            margin: 0 0 3px 0;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
             color: #fff;
+            line-height: 1.3;
         }
         .channel-name {
             color: #aaa;
-            font-size: 13px;
-            margin: 0 0 4px 0;
+            font-size: 12px;
+            margin: 0 0 2px 0;
         }
         .video-meta {
             color: #666;
-            font-size: 12px;
+            font-size: 11px;
             margin: 0;
         }
         .thumbnail-wrapper {
@@ -159,71 +160,86 @@
         }
         .duration {
             position: absolute;
-            bottom: 8px;
-            right: 8px;
+            bottom: 6px;
+            right: 6px;
             background: rgba(0,0,0,0.85);
             color: white;
-            padding: 2px 8px;
+            padding: 1px 6px;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
         }
-        .loading {
+        .loading, .no-result {
             text-align: center;
-            font-size: 18px;
+            font-size: 16px;
             color: #888;
-            padding: 50px;
+            padding: 40px 20px;
+            grid-column: 1 / -1;
         }
-        .no-result {
-            text-align: center;
-            font-size: 18px;
-            color: #666;
-            padding: 50px;
+        .error-message {
+            background: #2a0a0a;
+            border: 1px solid #ff3333;
+            color: #ff6666;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            word-break: break-word;
         }
 
-        /* スマホ対応 */
-        @media (max-width: 900px) {
+        @media (min-width: 768px) {
+            body { padding: 20px; }
+            h1 { font-size: 28px; }
             .main-layout {
-                flex-direction: column;
+                flex-direction: row;
+                align-items: flex-start;
             }
             .player-wrapper {
-                flex: 1;
-                width: 100%;
-                position: relative;
-                top: 0;
-                order: -1;
+                flex: 0 0 48%;
+                position: sticky;
+                top: 16px;
+                order: 0;
             }
             .video-list {
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                gap: 16px;
+            }
+            .search-box input { font-size: 18px; }
+            .search-box button { font-size: 18px; padding: 14px 32px; }
+        }
+        @media (min-width: 1024px) {
+            .video-list {
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                gap: 20px;
             }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>▶️ Invidius 動画検索</h1>
+    <h1>▶️ Invidius</h1>
     <div class="search-box">
-        <input type="text" id="searchInput" placeholder="動画のタイトルやYouTuber名を入力..." onkeydown="if(event.key==='Enter') searchVideos()">
+        <input type="text" id="searchInput" placeholder="動画やチャンネルを検索..." onkeydown="if(event.key==='Enter') searchVideos()">
         <button onclick="searchVideos()">検索</button>
     </div>
 
+    <div id="errorDisplay" class="error-message" style="display:none;"></div>
+
     <div class="main-layout">
-        <!-- 右：プレイヤー -->
         <div class="player-wrapper" id="playerWrapper">
             <div class="player-placeholder" id="playerPlaceholder">
                 <span>🎬</span>
-                動画をクリックすると<br>ここに再生されます
+                動画をタップすると<br>再生されます
             </div>
             <div id="playerContainer" style="display:none;">
-                <video id="playerVideo" controls></video>
+                <video id="playerVideo" controls playsinline></video>
                 <div class="video-title" id="playerTitle"></div>
                 <div class="channel-name" id="playerChannel"></div>
             </div>
         </div>
 
-        <!-- 左：動画一覧 -->
         <div class="video-list" id="results">
-            <div class="loading">🔍 キーワードを入れて検索してみてください</div>
+            <div class="loading">🔍 キーワードを入れて検索</div>
         </div>
     </div>
 </div>
@@ -231,15 +247,23 @@
 <script>
     let currentVideos = [];
 
+    function showError(msg) {
+        const el = document.getElementById('errorDisplay');
+        el.textContent = '⚠️ ' + msg;
+        el.style.display = 'block';
+        setTimeout(() => { el.style.display = 'none'; }, 8000);
+    }
+
     async function searchVideos() {
         const query = document.getElementById('searchInput').value.trim();
         if (!query) {
-            alert('検索ワードを入力してください');
+            showError('検索ワードを入力してください');
             return;
         }
 
         const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<div class="loading">⏳ 読み込み中...</div>';
+        document.getElementById('errorDisplay').style.display = 'none';
 
         try {
             const response = await fetch(`/search?q=${encodeURIComponent(query)}&limit=20`);
@@ -247,6 +271,7 @@
 
             if (data.error) {
                 resultsDiv.innerHTML = `<div class="no-result">❌ ${data.error}</div>`;
+                showError(data.error);
                 return;
             }
 
@@ -261,59 +286,67 @@
             data.forEach((video, index) => {
                 const thumb = `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
                 const seconds = video.lengthSeconds || 0;
-                const minutes = Math.floor(seconds / 60);
-                const secs = seconds % 60;
-                const duration = seconds > 0 ? `${minutes}:${secs.toString().padStart(2, '0')}` : '';
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                const duration = seconds > 0 ? `${m}:${String(s).padStart(2, '0')}` : '';
 
                 html += `
                     <div class="video-card" onclick="playVideo(${index})">
                         <div class="thumbnail-wrapper">
-                            <img src="${thumb}" alt="サムネイル" loading="lazy" onerror="this.src='https://via.placeholder.com/320x180?text=No+Image'">
+                            <img src="${thumb}" alt="サムネイル" loading="lazy" onerror="this.src='https://via.placeholder.com/320x180/222/666?text=No+Image'">
                             ${duration ? `<span class="duration">${duration}</span>` : ''}
                         </div>
                         <div class="video-info">
                             <p class="video-title">${escapeHtml(video.title)}</p>
                             <p class="channel-name">${escapeHtml(video.author)}</p>
-                            <p class="video-meta">👁️ ${video.viewCount?.toLocaleString() || 0} 回再生</p>
+                            <p class="video-meta">👁️ ${video.viewCount?.toLocaleString() || 0}</p>
                         </div>
                     </div>
                 `;
             });
             resultsDiv.innerHTML = html;
 
-            // 最初の動画を自動再生
             if (data.length > 0) {
                 playVideo(0);
             }
 
-        } catch (error) {
-            resultsDiv.innerHTML = `<div class="no-result">⚠️ エラーが発生しました: ${error.message}</div>`;
+        } catch (err) {
+            resultsDiv.innerHTML = `<div class="no-result">⚠️ 通信エラー</div>`;
+            showError('通信エラー: ' + err.message);
         }
     }
 
     function playVideo(index) {
         const video = currentVideos[index];
-        if (!video) return;
+        if (!video) {
+            showError('動画情報が見つかりません');
+            return;
+        }
 
-        // 自分のサーバー経由で動画をストリーミング！
         const streamUrl = `/stream/${video.videoId}`;
 
-        // プレイヤーを表示
         document.getElementById('playerPlaceholder').style.display = 'none';
         const container = document.getElementById('playerContainer');
         container.style.display = 'block';
 
-        // videoタグにストリームURLをセット
-        const videoElement = document.getElementById('playerVideo');
-        videoElement.src = streamUrl;
-        videoElement.load();  // 再読み込み
-        videoElement.play().catch(e => {
-            console.log('自動再生がブロックされました:', e);
+        const videoEl = document.getElementById('playerVideo');
+        
+        // エラー時は画面上で通知
+        videoEl.onerror = function(e) {
+            const errMsg = videoEl.error ? videoEl.error.message : '不明なエラー';
+            showError('動画読み込み失敗: ' + errMsg + ' (ID: ' + video.videoId + ')');
+            console.error('Video error:', e);
+        };
+
+        videoEl.src = streamUrl;
+        videoEl.load();
+        videoEl.play().catch(function(e) {
+            console.log('自動再生ブロック:', e);
+            // エラー表示せず、ユーザーが再生ボタンを押せる状態にしておく
         });
 
-        // タイトルとチャンネル名を更新
         document.getElementById('playerTitle').textContent = video.title;
-        document.getElementById('playerChannel').textContent = `🧑‍💻 ${video.author}`;
+        document.getElementById('playerChannel').textContent = '🧑‍💻 ' + video.author;
     }
 
     function escapeHtml(text) {
@@ -323,7 +356,6 @@
         return div.innerHTML;
     }
 
-    // ページ読み込み時にプレイヤーを非表示にしておく
     document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('playerContainer').style.display = 'none';
         document.getElementById('playerPlaceholder').style.display = 'block';
