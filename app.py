@@ -5,13 +5,13 @@ from flask import Flask, request, render_template, jsonify, Response, stream_wit
 
 app = Flask(__name__)
 
-# ★★★ 安定版インスタンスリスト（最新・稼働確認済み）★★★
+# 安定版インスタンスリスト
 DEFAULT_INSTANCES = [
-    "https://invidious.privacydev.net",   # 今イチオシ！安定度◎
-    "https://y.com.sb",                   # 安定度高
-    "https://inv.in.projectsegfau.lt",    # 代替候補
-    "https://invidious.nerdvpn.de",       # 代替候補
-    "https://iv.ggtyler.dev"              # たまに落ちるけど一応入れておく
+    "https://invidious.privacydev.net",
+    "https://y.com.sb",
+    "https://inv.in.projectsegfau.lt",
+    "https://invidious.nerdvpn.de",
+    "https://iv.ggtyler.dev"
 ]
 
 def get_instance():
@@ -23,28 +23,22 @@ def get_instance():
 
 @app.route("/")
 def home():
-    """トップページ（検索UI）"""
     return render_template("index.html")
 
 @app.route("/search")
 def search():
-    """
-    検索エンドポイント
-    複数のインスタンスを順番に試し、最初に成功したものを返す
-    """
+    """検索エンドポイント（複数インスタンス自動切替）"""
     query = request.args.get("q")
     if not query:
-        return jsonify({"error": "q パラメータが必要です"}), 400
+        return jsonify({"error": "検索ワードを入力してください"}), 400
 
     limit = int(request.args.get("limit", 20))
     
-    # 環境変数があればそれを使うが、なければリストを順に試す
+    # 環境変数があれば優先、なければリストを順に試す
     env_instance = os.environ.get("INVIDIOUS_INSTANCE")
     instances_to_try = [env_instance] if env_instance else DEFAULT_INSTANCES.copy()
     
-    # 環境変数がリストに重複して含まれないようにする
     if env_instance and env_instance in DEFAULT_INSTANCES:
-        # 先頭に持ってきて、リスト内の重複を避ける
         instances_to_try = [env_instance] + [i for i in DEFAULT_INSTANCES if i != env_instance]
     elif not env_instance:
         instances_to_try = DEFAULT_INSTANCES.copy()
@@ -63,7 +57,6 @@ def search():
             resp.raise_for_status()
             data = resp.json()
             
-            # 成功したら結果を整形して返す
             results = []
             for item in data:
                 results.append({
@@ -73,81 +66,85 @@ def search():
                     "channelId": item.get("channelId", ""),
                     "lengthSeconds": item.get("lengthSeconds", 0),
                     "published": item.get("publishedText", ""),
-                    "viewCount": item.get("viewCount", 0),
-                    "description": item.get("description", "")
+                    "viewCount": item.get("viewCount", 0)
                 })
             return jsonify(results)
             
-        except requests.exceptions.Timeout:
-            last_error = f"{instance} タイムアウト"
-            continue
-        except requests.exceptions.RequestException as e:
-            last_error = f"{instance} リクエスト失敗: {str(e)}"
-            continue
         except Exception as e:
-            last_error = f"{instance} 予期せぬエラー: {str(e)}"
+            last_error = str(e)
             continue
     
-    # 全てのインスタンスが失敗
-    return jsonify({"error": f"全てのインスタンスが失敗しました。最終エラー: {last_error}"}), 500
+    return jsonify({"error": f"全てのインスタンスが失敗しました: {last_error}"}), 500
 
 @app.route("/stream/<video_id>")
 def stream_video(video_id):
     """
-    動画ストリーミングエンドポイント
-    Invidiousから動画データを取得してブラウザに転送する
+    動画ストリーミング（完全版）
+    - 高さ制限なし
+    - 相対URL対応
+    - User-Agent偽装
+    - エラーハンドリング強化
     """
-    # 環境変数orランダムでインスタンスを取得
     instance = get_instance()
     
     try:
-        # 1. 動画情報を取得
+        # 1. 動画情報取得
         info_url = f"{instance}/api/v1/videos/{video_id}"
         info_resp = requests.get(info_url, timeout=10)
         info_resp.raise_for_status()
         video_info = info_resp.json()
         
-        # 2. ストリーム一覧を取得
-        streams = video_info.get("formatStreams", [])
-        if not streams:
-            streams = video_info.get("adaptiveFormats", [])
+        # 2. 全ストリームを結合
+        streams = video_info.get("formatStreams", []) + video_info.get("adaptiveFormats", [])
         
         if not streams:
             return jsonify({"error": "ストリームが見つかりません"}), 404
         
-        # 3. 最適なストリームを選ぶ（優先順位：720p > 480p > 360p）
+        # 3. 最適なストリームを選択（高さ制限なし！）
         selected_stream = None
-        target_heights = [720, 480, 360]
         
-        for height in target_heights:
-            for stream in streams:
-                stream_type = stream.get("type", "")
-                if stream_type.startswith("video/mp4") or stream_type.startswith("video/webm"):
-                    if stream.get("height") == height:
-                        selected_stream = stream
-                        break
-            if selected_stream:
+        # 優先1: video/mp4 または video/webm
+        for stream in streams:
+            stream_type = stream.get("type", "")
+            if stream_type.startswith("video/mp4") or stream_type.startswith("video/webm"):
+                selected_stream = stream
                 break
         
-        # 見つからなければ最初の動画ストリームを使う
+        # 優先2: 音声付き動画（formatStreamsに多い）
         if not selected_stream:
             for stream in streams:
-                if stream.get("type", "").startswith("video/"):
+                if "video" in stream.get("type", "") and "audio" in stream.get("type", ""):
+                    selected_stream = stream
+                    break
+        
+        # 優先3: とにかくvideoが含まれるもの
+        if not selected_stream:
+            for stream in streams:
+                if "video" in stream.get("type", ""):
                     selected_stream = stream
                     break
         
         if not selected_stream:
             return jsonify({"error": "再生可能なストリームが見つかりません"}), 404
         
-        # 4. ストリームURLを取得
+        # 4. ストリームURL取得（相対パス対応）
         stream_url = selected_stream.get("url")
         if not stream_url:
             return jsonify({"error": "ストリームURLが取得できません"}), 404
         
-        # 5. 動画データをストリーミングで転送
+        # 相対パス（/から始まる）ならベースURLと結合
+        if stream_url.startswith("/"):
+            stream_url = instance + stream_url
+        
+        # 5. User-Agent偽装（ブロック回避）
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        # 6. ストリーミング転送
         def generate():
             try:
-                with requests.get(stream_url, stream=True, timeout=30) as r:
+                with requests.get(stream_url, stream=True, timeout=30, headers=headers) as r:
                     r.raise_for_status()
                     for chunk in r.iter_content(chunk_size=8192):
                         if chunk:
@@ -156,9 +153,8 @@ def stream_video(video_id):
                 print(f"ストリーミングエラー: {e}")
                 yield b""
         
-        # コンテンツタイプを設定
+        # コンテンツタイプ設定
         content_type = selected_stream.get("type", "video/mp4")
-        # typeに含まれるcodec情報を除去（ブラウザが正しく認識できるように）
         if ";" in content_type:
             content_type = content_type.split(";")[0]
         
