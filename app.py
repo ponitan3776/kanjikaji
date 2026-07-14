@@ -5,18 +5,17 @@ from flask import Flask, request, render_template, jsonify, Response, stream_wit
 
 app = Flask(__name__)
 
-# パブリックインスタンスのリスト（環境変数で上書き可能）
+# ★★★ 安定版インスタンスリスト（最新・稼働確認済み）★★★
 DEFAULT_INSTANCES = [
-    "https://y.com.sb",
-    "https://inv.us.projectsegfau.lt",
-    "https://invidious.privacydev.net",
-    "https://invidious.nerdvpn.de",
-    "https://invidious.snopyta.org",
-    "https://iv.ggtyler.dev"
+    "https://invidious.privacydev.net",   # 今イチオシ！安定度◎
+    "https://y.com.sb",                   # 安定度高
+    "https://inv.in.projectsegfau.lt",    # 代替候補
+    "https://invidious.nerdvpn.de",       # 代替候補
+    "https://iv.ggtyler.dev"              # たまに落ちるけど一応入れておく
 ]
 
 def get_instance():
-    """環境変数かランダムでインスタンスURLを返す"""
+    """環境変数があればそれを使う。なければランダム選択"""
     env_url = os.environ.get("INVIDIOUS_INSTANCE")
     if env_url:
         return env_url.rstrip("/")
@@ -29,46 +28,68 @@ def home():
 
 @app.route("/search")
 def search():
-    """検索エンドポイント： ?q=キーワード&limit=20"""
+    """
+    検索エンドポイント
+    複数のインスタンスを順番に試し、最初に成功したものを返す
+    """
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "q パラメータが必要です"}), 400
 
     limit = int(request.args.get("limit", 20))
-    instance = get_instance()
-    url = f"{instance}/api/v1/search"
-
-    params = {
-        "q": query,
-        "type": "video",
-        "limit": min(limit, 20)
-    }
-
-    try:
-        resp = requests.get(url, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-
-        results = []
-        for item in data:
-            results.append({
-                "title": item.get("title", "タイトルなし"),
-                "author": item.get("author", "不明なチャンネル"),
-                "videoId": item.get("videoId", ""),
-                "channelId": item.get("channelId", ""),
-                "lengthSeconds": item.get("lengthSeconds", 0),
-                "published": item.get("publishedText", ""),
-                "viewCount": item.get("viewCount", 0),
-                "description": item.get("description", "")
-            })
-        return jsonify(results)
-
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "インスタンスがタイムアウトしました"}), 504
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"リクエスト失敗: {str(e)}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"予期せぬエラー: {str(e)}"}), 500
+    
+    # 環境変数があればそれを使うが、なければリストを順に試す
+    env_instance = os.environ.get("INVIDIOUS_INSTANCE")
+    instances_to_try = [env_instance] if env_instance else DEFAULT_INSTANCES.copy()
+    
+    # 環境変数がリストに重複して含まれないようにする
+    if env_instance and env_instance in DEFAULT_INSTANCES:
+        # 先頭に持ってきて、リスト内の重複を避ける
+        instances_to_try = [env_instance] + [i for i in DEFAULT_INSTANCES if i != env_instance]
+    elif not env_instance:
+        instances_to_try = DEFAULT_INSTANCES.copy()
+    
+    last_error = None
+    for instance in instances_to_try:
+        try:
+            url = f"{instance}/api/v1/search"
+            params = {
+                "q": query,
+                "type": "video",
+                "limit": min(limit, 20)
+            }
+            
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            # 成功したら結果を整形して返す
+            results = []
+            for item in data:
+                results.append({
+                    "title": item.get("title", "タイトルなし"),
+                    "author": item.get("author", "不明なチャンネル"),
+                    "videoId": item.get("videoId", ""),
+                    "channelId": item.get("channelId", ""),
+                    "lengthSeconds": item.get("lengthSeconds", 0),
+                    "published": item.get("publishedText", ""),
+                    "viewCount": item.get("viewCount", 0),
+                    "description": item.get("description", "")
+                })
+            return jsonify(results)
+            
+        except requests.exceptions.Timeout:
+            last_error = f"{instance} タイムアウト"
+            continue
+        except requests.exceptions.RequestException as e:
+            last_error = f"{instance} リクエスト失敗: {str(e)}"
+            continue
+        except Exception as e:
+            last_error = f"{instance} 予期せぬエラー: {str(e)}"
+            continue
+    
+    # 全てのインスタンスが失敗
+    return jsonify({"error": f"全てのインスタンスが失敗しました。最終エラー: {last_error}"}), 500
 
 @app.route("/stream/<video_id>")
 def stream_video(video_id):
@@ -76,6 +97,7 @@ def stream_video(video_id):
     動画ストリーミングエンドポイント
     Invidiousから動画データを取得してブラウザに転送する
     """
+    # 環境変数orランダムでインスタンスを取得
     instance = get_instance()
     
     try:
@@ -93,7 +115,7 @@ def stream_video(video_id):
         if not streams:
             return jsonify({"error": "ストリームが見つかりません"}), 404
         
-        # 3. 最適なストリームを選ぶ（優先順位：720p > 480p > 360p > それ以外）
+        # 3. 最適なストリームを選ぶ（優先順位：720p > 480p > 360p）
         selected_stream = None
         target_heights = [720, 480, 360]
         
