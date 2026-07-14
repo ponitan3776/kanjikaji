@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Invidious 動画検索</title>
+    <title>ようつべ</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -61,7 +61,7 @@
         }
         .loading, .no-result { text-align: center; font-size: 16px; color: #888; padding: 40px 20px; grid-column: 1 / -1; }
 
-        /* ★ デバッグ表示エリア */
+        /* デバッグエリア */
         #debugArea {
             background: #1a1a2a;
             border: 1px solid #4444aa;
@@ -79,6 +79,7 @@
         }
         #debugArea.error { border-color: #ff4444; color: #ff8888; background: #2a1a1a; }
         #debugArea.success { border-color: #44ff44; color: #88ff88; background: #1a2a1a; }
+        #debugArea.warn { border-color: #ffaa44; color: #ffcc88; background: #2a2a1a; }
 
         @media (min-width: 768px) {
             body { padding: 20px; }
@@ -97,7 +98,6 @@
         <button onclick="searchVideos()">検索</button>
     </div>
 
-    <!-- ★ デバッグ表示エリア -->
     <div id="debugArea"></div>
 
     <div class="main-layout">
@@ -127,9 +127,8 @@
         el.style.display = 'block';
         el.className = type || '';
         el.textContent = msg;
-        // 10秒後に消す（エラーは残す）
         if (type !== 'error') {
-            setTimeout(() => { el.style.display = 'none'; }, 10000);
+            setTimeout(() => { el.style.display = 'none'; }, 15000);
         }
     }
 
@@ -206,7 +205,7 @@
         const videoId = video.videoId;
         const streamUrl = `/stream/${videoId}`;
 
-        debugLog(`🎬 再生開始: ${video.title} (ID: ${videoId})`, '');
+        debugLog(`🎬 読み込み開始: ${video.title} (ID: ${videoId})`, '');
 
         document.getElementById('playerPlaceholder').style.display = 'none';
         const container = document.getElementById('playerContainer');
@@ -214,31 +213,40 @@
 
         const videoEl = document.getElementById('playerVideo');
         
-        // エラーハンドリング（詳細表示）
+        // ★ エラーコードを日本語で表示
         videoEl.onerror = function(e) {
             const err = videoEl.error;
-            let msg = `❌ 動画読み込み失敗 (ID: ${videoId})\n`;
+            let codeMsg = '';
             if (err) {
-                msg += `コード: ${err.code}\n`;
-                msg += `メッセージ: ${err.message || '不明'}`;
+                switch(err.code) {
+                    case 1: codeMsg = 'MEDIA_ERR_ABORTED (読み込み中止)'; break;
+                    case 2: codeMsg = 'MEDIA_ERR_NETWORK (ネットワークエラー)'; break;
+                    case 3: codeMsg = 'MEDIA_ERR_DECODE (デコードエラー)'; break;
+                    case 4: codeMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED (形式非対応 or URL無効)'; break;
+                    default: codeMsg = '不明なエラー';
+                }
+                debugLog(`❌ エラーコード: ${err.code} (${codeMsg})\n動画ID: ${videoId}\nメッセージ: ${err.message || 'なし'}`, 'error');
             } else {
-                msg += '原因不明のエラー';
+                debugLog(`❌ 不明なエラー (ID: ${videoId})`, 'error');
             }
-            debugLog(msg, 'error');
             console.error('Video Error:', err);
         };
 
-        // 読み込み成功時
+        // 読み込み成功
         videoEl.onloadeddata = function() {
             debugLog(`✅ 動画読み込み成功！ (ID: ${videoId})`, 'success');
+        };
+
+        // 読み込み中
+        videoEl.onloadstart = function() {
+            debugLog(`⏳ 読み込み中... (ID: ${videoId})`, 'warn');
         };
 
         videoEl.src = streamUrl;
         videoEl.load();
         videoEl.play().catch(function(e) {
-            // 自動再生ブロックはエラー扱いしない（ユーザーが再生ボタンを押せる）
             console.log('自動再生ブロック:', e);
-            debugLog(`ℹ️ 自動再生がブロックされました (ID: ${videoId})。再生ボタンを押してください`, '');
+            debugLog(`ℹ️ 自動再生ブロックされました (ID: ${videoId})。再生ボタンを押してください`, 'warn');
         });
 
         document.getElementById('playerTitle').textContent = video.title;
