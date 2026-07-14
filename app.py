@@ -20,6 +20,11 @@ def get_instance():
         return env_url.rstrip("/")
     return random.choice(DEFAULT_INSTANCES)
 
+# ★★★ デバッグ用：最新コードが動いているか確認するエンドポイント ★★★
+@app.route("/test")
+def test():
+    return "✅ 最新コードが動いています！ (2026-07-14 最終版)"
+
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -63,15 +68,17 @@ def search():
 @app.route("/stream/<video_id>")
 def stream_video(video_id):
     """
-    動画ストリーミング（完全版・エラー処理徹底）
+    動画ストリーミング（最終デバッグ版）
     """
+    # ★ ここでログに必ず表示されるメッセージを出力 ★
+    print("=" * 60)
+    print(f"🚀🚀🚀 /stream が呼ばれました！ 動画ID: {video_id} 🚀🚀🚀")
+    print("=" * 60)
+    
     instance = get_instance()
     
     try:
-        print(f"🎬 動画ID: {video_id}")
-        print(f"🌐 使用インスタンス: {instance}")
-        
-        # 1. 動画情報を取得
+        # 動画情報を取得
         info_url = f"{instance}/api/v1/videos/{video_id}"
         info_resp = requests.get(
             info_url,
@@ -81,86 +88,68 @@ def stream_video(video_id):
         info_resp.raise_for_status()
         video_info = info_resp.json()
         
-        # 2. 全ストリームを結合（formatStreams + adaptiveFormats）
+        # 全ストリームを結合
         streams = video_info.get("formatStreams", []) + video_info.get("adaptiveFormats", [])
-        print(f"📊 取得したストリーム数: {len(streams)}")
+        print(f"📊 ストリーム数: {len(streams)}")
         
         if not streams:
-            print("❌ ストリームが0件")
             return jsonify({"error": "ストリームがありません"}), 404
         
-        # 3. ストリームを選択（itag指定）
+        # itag指定で選択（22→18→34→35→36→17）
         selected_stream = None
-        
-        # itag優先順位: 22(720p) → 18(360p) → 34(360p) → 35(480p) → 36(240p) → 17(144p)
-        target_itags = [22, 18, 34, 35, 36, 17]
-        
-        for itag in target_itags:
+        for itag in [22, 18, 34, 35, 36, 17]:
             for s in streams:
                 if s.get("itag") == itag:
                     selected_stream = s
-                    print(f"✅ itag {itag} のストリームを選択")
+                    print(f"✅ itag {itag} を選択")
                     break
             if selected_stream:
                 break
         
-        # 4. itagで見つからなければ video/mp4 を探す（フォールバック）
+        # フォールバック1: video/mp4
         if not selected_stream:
-            print("⚠️ itag指定で見つからなかったので video/mp4 を探します")
             for s in streams:
                 if "video/mp4" in s.get("type", ""):
                     selected_stream = s
-                    print(f"✅ video/mp4 ストリームを選択 (itag: {s.get('itag')})")
+                    print(f"✅ video/mp4 を選択 (itag: {s.get('itag')})")
                     break
         
-        # 5. それでもなければ video/ を含む最初のものを探す
+        # フォールバック2: 最初のvideo
         if not selected_stream:
-            print("⚠️ video/mp4もないので最初のvideoストリームを探します")
             for s in streams:
                 if "video" in s.get("type", ""):
                     selected_stream = s
-                    print(f"✅ 最初のvideoストリームを選択 (itag: {s.get('itag')})")
+                    print(f"✅ 最初のvideoを選択 (itag: {s.get('itag')})")
                     break
         
-        # 6. それでもなければ失敗
         if not selected_stream:
-            print("❌ どのストリームも選択できませんでした")
+            print("❌ ストリーム選択失敗")
             return jsonify({"error": "再生可能なストリームがありません"}), 404
         
-        # 7. ストリームURLを取得
+        # URL取得
         stream_url = selected_stream.get("url")
         if not stream_url:
-            print("❌ URLが取得できません")
             return jsonify({"error": "URLが取得できません"}), 404
         
-        # 相対パスを絶対パスに変換
         if stream_url.startswith("/"):
             stream_url = instance.rstrip("/") + stream_url
-        print(f"🔗 最終的なストリームURL: {stream_url}")
         
-        # 8. 事前確認（HEADリクエストでURLが有効かチェック）
+        print(f"🔗 ストリームURL: {stream_url}")
+        
+        # HEADリクエストで事前確認
         try:
-            head_resp = requests.head(
-                stream_url,
-                timeout=10,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            )
+            head_resp = requests.head(stream_url, timeout=10, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
             if head_resp.status_code not in [200, 206]:
-                print(f"❌ HEADリクエスト失敗: HTTP {head_resp.status_code}")
-                return jsonify({
-                    "error": f"ストリームURLが無効 (HTTP {head_resp.status_code})",
-                    "url": stream_url
-                }), 404
-            else:
-                print(f"✅ HEADリクエスト成功: HTTP {head_resp.status_code}")
+                print(f"❌ HEAD失敗: HTTP {head_resp.status_code}")
+                return jsonify({"error": f"ストリームURLが無効 (HTTP {head_resp.status_code})"}), 404
+            print(f"✅ HEAD成功: HTTP {head_resp.status_code}")
         except Exception as e:
-            print(f"❌ HEADリクエスト例外: {str(e)}")
-            return jsonify({
-                "error": f"ストリームURLへの接続に失敗: {str(e)}",
-                "url": stream_url
-            }), 500
+            print(f"❌ HEAD例外: {e}")
+            return jsonify({"error": f"接続失敗: {str(e)}"}), 500
         
-        # 9. ストリーミング転送
+        # ストリーミング転送
         def generate():
             try:
                 headers = {
@@ -173,10 +162,9 @@ def stream_video(video_id):
                         if chunk:
                             yield chunk
             except Exception as e:
-                print(f"❌ ストリーミング例外: {str(e)}")
+                print(f"❌ ストリーミング例外: {e}")
                 yield b""
         
-        # コンテンツタイプを設定
         content_type = selected_stream.get("type", "video/mp4")
         if ";" in content_type:
             content_type = content_type.split(";")[0]
@@ -191,9 +179,8 @@ def stream_video(video_id):
         )
         
     except Exception as e:
-        # 予期せぬエラーはスタックトレースをログに出力
         print("=" * 60)
-        print("❌ stream_video で予期せぬエラーが発生しました")
+        print("❌ 予期せぬエラー発生")
         traceback.print_exc()
         print("=" * 60)
         return jsonify({"error": f"動画取得エラー: {str(e)}"}), 500
